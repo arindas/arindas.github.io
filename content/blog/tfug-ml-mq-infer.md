@@ -11,7 +11,7 @@ toc = true
 katex = true
 +++
 
-_Find the slides for the talk this was used in [here](https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/tfug-ml-mq-infer-slides.pdf)._
+_Find the slides used for this talk [here](https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/tfug-ml-mq-infer-slides.pdf)._
 
 ## Introduction
 
