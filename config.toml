@@ -10,7 +10,7 @@ build_search_index = true
 theme = "tabi"
 
 title = "~/arindas"
-description = "arindas's Personal blog"
+description = "arindas' personal website"
 generate_feed = true
 minify_html = true
 
