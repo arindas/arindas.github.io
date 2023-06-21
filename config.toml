@@ -10,7 +10,7 @@ build_search_index = true
 theme = "tabi"
 
 title = "~/arindas"
-description = "arindas' personal website"
+description = "arindas' personal website and blog for ruminating on their place and purpose in the tech world."
 generate_feed = true
 minify_html = true
 
@@ -56,7 +56,7 @@ favicon = ""
 favicon_emoji = "⚙️"
 
 # This header image is used for SEO. For example if you were to share an image via Messenger/Instagram/Twitter a preview picture is also presented
-headerImage = "$BASE_URL/img/penguin.jpg"
+headerImage = "img/penguin.jpg"
 
 menu = [
     { name = "blog", url = "blog/" },
