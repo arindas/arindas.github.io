@@ -11,7 +11,8 @@ toc = true
 katex = true
 +++
 
-_Find the slides used for this talk [here](https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/tfug-ml-mq-infer-slides.pdf)._
+_This was originally written for a talk at TFUG Kolkata. Read the slides
+[here](https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/tfug-ml-mq-infer-slides.pdf)._
 
 ## Introduction
 
@@ -223,7 +224,7 @@ data-structures from the `B-Tree` family
 </p>
 
 - `segmented_log` and `B-Tree` comparison continued ...
-  - `segmented_log`(s) have $O(1)$ writes on average. B-Tree have $O(log n)$
+  - `segmented_log`(s) have $O(1)$ writes on average. `B-Tree`(s) have $O(\log n)$
   insertions.
     - In segmented_log appending to the `write_segment` is $O(1)$
     - When rotating the `write_segment`, `vector::push_back` on vector of read 
@@ -243,7 +244,7 @@ data-structures from the `B-Tree` family
   set of segments in the segmented_log. (Usually, $\frac{n}{|segments|} >= 1000$)
     - This is possible since the segments are sorted by indices and given a record
     index, we can perform a binary search to check which segment has the record
-    with the index, which would be $O(\log |segments|)$. Reading a specific index
+    with the index, which would be $O(\log |segments|)$. Reading at a specific index
     from a segment is $O(1)$.
     - If we can guarantee constant record size (with padding) and constant max
     number of records per segment, we can provide $O(1)$ reads for `segmented_log`(s).
