@@ -48,7 +48,7 @@ requirements to worry about
 Message queues are queues of "message" elements, and they
 fulfil the above requirements.
 
-<p style="page-break-before: always;">&nbsp;</p>
+<p class="page-break">&nbsp;</p>
 
 ## Message queue usage model
 
@@ -82,7 +82,7 @@ connections when the maximum number of connections is reached. The server may
 also be also be configured with request rate limits where the server start
 dropping requests altogether if they arrive at a higher than expected rate.
 
-<p style="page-break-before: always;">&nbsp;</p>
+<p class="page-break">&nbsp;</p>
 
 ### Message Queue: Asynchronous processing
 
@@ -200,7 +200,7 @@ being handled successfully.
 >Some also call this event driven architecture, with the individual messages
 >being "event"(s)
 
-<p style="page-break-before: always;">&nbsp;</p>
+<p class="page-break">&nbsp;</p>
 
 ## Why use message queues instead of Databases?
 
@@ -302,7 +302,7 @@ consider the following case study.
 
 ---
 
-<p style="page-break-before: always;">&nbsp;</p>
+<p class="page-break">&nbsp;</p>
 
 ## Case Study: Plant medicine effectiveness on Crops
 
@@ -378,7 +378,7 @@ drone controllers which communicate with each other using the message queue.
 
 The various components of the system are described in the following sections.
 
-<p style="page-break-before: always;">&nbsp;</p>
+<p class="page-break">&nbsp;</p>
 
 #### Drone Image Collector
 
@@ -434,7 +434,7 @@ on each of the 5 disease grader topics "disease_0", "disease_1", ...,
 This service might not be necessary in some message queues where they provide
 utilities to do this automatically.
 
-<p style="page-break-before: always;">&nbsp;</p>
+<p class="page-break">&nbsp;</p>
 
 #### Individual disease grader services
 
