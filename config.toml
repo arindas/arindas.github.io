@@ -49,11 +49,11 @@ short_date_format = ""
 separator = "•"
 
 # Full path after the base URL required. So if you were to place it in "static" it would be "/favicon.ico"
-favicon = ""
+favicon = "/favicon.ico"
 
 # Add an emoji here to use it as favicon.
 # Compatibility: https://caniuse.com/link-icon-svg
-favicon_emoji = "⚙️"
+favicon_emoji = ""
 
 # This header image is used for SEO. For example if you were to share an image via Messenger/Instagram/Twitter a preview picture is also presented
 headerImage = "/img/penguin.jpg"
