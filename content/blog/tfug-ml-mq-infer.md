@@ -52,6 +52,8 @@ fulfil the above requirements.
 
 ## Message queue usage model
 
+This section discusses the models of computations possible using message queues.
+
 ### Background: Client Server model
 
 Let us first discuss how we work without message queues.
