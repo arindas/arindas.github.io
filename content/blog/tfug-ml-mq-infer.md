@@ -298,6 +298,8 @@ consider the following case study.
 
 ---
 
+<br/>
+
 ## Case Study: Plant medicine effectiveness on Crops
 
 >An agricultural pharmacy company has come up with a new drug to cure various
