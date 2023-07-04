@@ -23,7 +23,7 @@ We see the word "queue" in it, why?
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/queue.drawio.png" alt="queue-diagram" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> a First In First Out (FIFO) queue.
 </p>
 
@@ -48,8 +48,6 @@ requirements to worry about
 Message queues are queues of "message" elements, and they
 fulfil the above requirements.
 
-<p class="page-break">&nbsp;</p>
-
 ## Message queue usage model
 
 This section discusses the models of computations possible using message queues.
@@ -64,7 +62,7 @@ to the server, which responds back with a synchronous response.
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/client-server-model.drawio.png" alt="client-server-model" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> Client - Server model.
 </p>
 
@@ -74,7 +72,7 @@ once?
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/client-server-model-overwhelmed.drawio.png" alt="client-server-model-overwhelmed" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> Client - Server model overhelmed with too many clients for the server to handle.
 </p>
 
@@ -84,8 +82,6 @@ connections when the maximum number of connections is reached. The server may
 also be also be configured with request rate limits where the server start
 dropping requests altogether if they arrive at a higher than expected rate.
 
-<p class="page-break">&nbsp;</p>
-
 ### Message Queue: Asynchronous processing
 
 Message queues enable asynchronous handling of requests.
@@ -93,7 +89,7 @@ Message queues enable asynchronous handling of requests.
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/async-processing.drawio.png" alt="async-processing" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> Asynchronous processing of requests with request and response queues.
 </p>
 
@@ -111,7 +107,7 @@ _horizontal scaling_ at each stage. But how?
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/multi-stage-processing.drawio.png" alt="multi-stage-processing" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> Multi-stage asynchornous horizontally scalable processing.
 </p>
 
@@ -129,8 +125,8 @@ it and writes the intermediate result to `topic_a_out_b_in` topic.
 - The client reads the results from the `topic_b_out` topic.
 
 You may also think of the `stage #a` and `stage #b` as two functions $a(x)$ and
-$b(x)$, and we are essentially computing the composite function $b(a(x))$ where
-$x$ is the client input request. The only difference being:
+$b(x)$, and we are essentially computing the composite function $(b \circ a)(x)
+= b(a(x))$ where $x$ is the client input request. The difference being:
 - The values are passed into the "function"(s) over the network via message
 queues
 - There is a queue of values $X = \lbrace x_0, x_1, ...\rbrace $ to process.
@@ -152,7 +148,7 @@ messages in another partition.
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/kafka-topic-partition.drawio.png" alt="topic-partition-hierarchy" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> Topics and partitions in Apache Kafka.
 </p>
 
@@ -165,7 +161,7 @@ There are two kinds of clients for Apache Kafka: Producers and Consumers
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/kafka-horizontal-scaling.drawio.png" alt="kafka-horizontal-scaling" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> Horizontally scaling a stage with Kafka partitions.
 </p>
 
@@ -191,7 +187,7 @@ Message published to the topic are load balanced across all the subscriptions.
 
 ### Primary distinction between synchronous and asynchronous request processing
 
-- Sychronous model: Requests are delivered to the server as soon as they arrive.
+- Synchronous model: Requests are delivered to the server as soon as they arrive.
 If the server has enough resources to handle the requests, they are processed.
 Otherwise they are either delayed or dropped.
 - Asynchronous model: Requests are buffered as soon as they arrive. Then the
@@ -201,8 +197,6 @@ being handled successfully.
 
 >Some also call this event driven architecture, with the individual messages
 >being "event"(s)
-
-<p class="page-break">&nbsp;</p>
 
 ## Why use message queues instead of Databases?
 
@@ -221,7 +215,7 @@ data-structures from the `B-Tree` family
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/segmented-log.drawio.png" alt="segmented-log" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> The <code>segmented-log</code> data-structure.
 </p>
 
@@ -256,7 +250,7 @@ data-structures from the `B-Tree` family
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/b-tree.png" alt="B-Tree" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> The <code>B-Tree</code> data-structure.
 </p>
   
@@ -304,8 +298,6 @@ consider the following case study.
 
 ---
 
-<p class="page-break">&nbsp;</p>
-
 ## Case Study: Plant medicine effectiveness on Crops
 
 >An agricultural pharmacy company has come up with a new drug to cure various
@@ -338,7 +330,7 @@ Now take a look at this photograph:
 <p align="center">
 <img src="https://media.istockphoto.com/id/483451251/photo/fungal-attack.jpg?s=612x612&w=0&k=20&c=PM0Lld99Io4DU6sRqemkytZUkuSF5effOJ8fhIAXwVo=" alt="fungal-attack" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> A plant suffering from a fungal-attack.
 </p>
 
@@ -374,13 +366,11 @@ drone controllers which communicate with each other using the message queue.
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/plant-pharma-case-study-solution-architecture.drawio.png" alt="plant-pharma-case-study-solution-architecture" />
 </p>
-<p align="center">
+<p align="center" class="caption">
 <b>Fig:</b> Solution Architecture diagram.
 </p>
 
 The various components of the system are described in the following sections.
-
-<p class="page-break">&nbsp;</p>
 
 #### Drone Image Collector
 
@@ -435,8 +425,6 @@ on each of the 5 disease grader topics "disease_0", "disease_1", ...,
 
 This service might not be necessary in some message queues where they provide
 utilities to do this automatically.
-
-<p class="page-break">&nbsp;</p>
 
 #### Individual disease grader services
 
