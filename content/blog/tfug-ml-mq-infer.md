@@ -394,7 +394,7 @@ connectivity.)
 the message contains an image url, assume that the component also downloads the
 image from the url to it's local storage.
 
-Also the service might be use a shared persistent storage service to avoid
+Also the service might use a shared persistent storage service to avoid
 hitting S3 every time.)
 
 #### Leaf image cropper
