@@ -659,4 +659,3 @@ This concludes our implementation of the thread pool.
 
 Go through the tests for `ThreadPool` [here](https://github.com/arindas/sangfroid/blob/main/src/threadpool.rs#L313).
 
-If you have read till here, I'm immensely grateful to you. I hope you could learn something from this. At the very least I hope that it was an interesting read. Thank you.
