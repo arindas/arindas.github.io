@@ -9,6 +9,7 @@ tags = ["mlops", "message-queue", "ml-inference"]
 [extra]
 toc = true
 katex = true
+giscus = true
 +++
 
 _This was originally written for a talk at TFUG Kolkata. Read the slides

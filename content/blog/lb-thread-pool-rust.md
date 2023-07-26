@@ -8,6 +8,7 @@ tags = ["thread-pool", "concurrency", "rust", "priority-queue", "binary-heap"]
 
 [extra]
 toc = true
+giscus = true
 +++
 
 ![thread-pool](https://cdn.hashnode.com/res/hashnode/image/upload/v1644411476413/2aS_z0rJP.png?w=1600&h=840&fit=crop&crop=entropy&auto=compress,format&format=webp)
