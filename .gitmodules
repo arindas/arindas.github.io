@@ -1,3 +1,6 @@
 [submodule "themes/tabi"]
 	path = themes/tabi
 	url = https://github.com/arindas/tabi.git
+[submodule "themes/welpo-tabi"]
+	path = themes/welpo-tabi
+	url = https://github.com/welpo/tabi.git

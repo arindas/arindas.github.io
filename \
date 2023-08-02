@@ -99,8 +99,8 @@ the same state.
 
 ---
 
-#### State-machine replication with a Log
-#### Asynchronous processing with a Log
+#### State-machine replication with log
+#### Asynchronous processing with log
 
 
 ## Segmented Log 🪚🪵
@@ -127,6 +127,6 @@ system." *Concurrency: the Works of Leslie Lamport.* 2019. 179-196.
 
 {% end %}
 
-[^1]: A lamport clock is a logical counter to establish causality between two
-events. Since it's decoupled from wall-clock time, it's used in
-distributed-systems for ordering events.
+[^1]: A lamport clock is a logical counter to establish causality between two events. Since it's decoupled from wall-clock time, it's used in distributed-systems for ordering events.
+
+[^2]: Something else
