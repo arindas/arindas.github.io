@@ -224,6 +224,34 @@ now be called a `segmented_log`.
 
 Wait wait don't leave yet 😅. Let's take this a bit more seriously this time.
 
+Let's go back to the log. At the end of the day a log is sequential collection
+of elements. Whats the simplest data structure we can use to implement this? An
+array. However, we need persistence. So let's use a file based abstraction
+instead. (We can quite literally map a file to a process's virtual memory
+address space using [`mmap`](https://man7.org/linux/man-pages/man2/mmap.2.html)
+system call and then use it like an array, but that's a topic for a different
+day.)
+
+<p align="center">
+<img src="/img/log.png" alt="queue-diagram" width="50%"/>
+</p>
+<p align="center" class="caption">
+<b>Fig:</b>: A log implementation based on a file.
+</p>
+
+Since our file based abstraction will need to support an append only
+data-structure, it internally sequentially writes to the end of the internal
+file. Assume that this abstraction allows you to uniquely refer to any entry
+using it's index.
+
+Now, this setup will lead us to store all data on a single large file, which
+causes some problems:
+- A single large file is difficult to store, move and copy
+- Few bad sectors in the underlying disk can make the whole file unrecoverable.
+This can render all stored data unusable.
+
+
+
 ### Original description in the Apache Kafka paper
 
 ## A `segmented_log` implementation
@@ -238,7 +266,7 @@ This concludes the implementation.
 
 ## References
 
-The following resources were used as reference for this blog post:
+We utilized the following resources as references for this blog post:
 
 {% references() %}
 
