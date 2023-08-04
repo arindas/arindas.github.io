@@ -199,7 +199,8 @@ handle them.
 Now it's not necessary that all the requests have to be handle by the same
 server. Because the log is shared, different servers may choose to share the
 load with each other. In this case, the requests are distributed between the
-servers to load-balance the requests.
+servers to load-balance the requests. (Provided that there is no causal
+dependency between the requests.)
 
 For instance, a simple scheme might be: If there are N servers, the server for
 a particular request is decided with `request.index % N`.
@@ -228,9 +229,9 @@ Let's go back to the log. At the end of the day a log is sequential collection
 of elements. Whats the simplest data structure we can use to implement this? An
 array. However, we need persistence. So let's use a file based abstraction
 instead. (We can quite literally map a file to a process's virtual memory
-address space using [`mmap`](https://man7.org/linux/man-pages/man2/mmap.2.html)
-system call and then use it like an array, but that's a topic for a different
-day.)
+address space using the
+[`mmap`](https://man7.org/linux/man-pages/man2/mmap.2.html) system call and
+then use it like an array, but that's a topic for a different day.)
 
 <p align="center">
 <img src="/img/log.png" alt="queue-diagram" width="50%"/>
@@ -239,17 +240,55 @@ day.)
 <b>Fig:</b>: A log implementation based on a file.
 </p>
 
-Since our file based abstraction will need to support an append only
+Since our file based abstraction needs to support an append only
 data-structure, it internally sequentially writes to the end of the internal
 file. Assume that this abstraction allows you to uniquely refer to any entry
 using it's index.
 
-Now, this setup will lead us to store all data on a single large file, which
-causes some problems:
+Now, this setup has some problems:
+- All entries are sequentially written to a single large file
 - A single large file is difficult to store, move and copy
 - Few bad sectors in the underlying disk can make the whole file unrecoverable.
 This can render all stored data unusable.
 
+The logical next step is to split this abstraction across multiple smaller
+units. We call these smaller units _segments_.
+
+<p align="center">
+<img src="/img/segmented-log-basic-intro.png" alt="segmented-log-basic-intro"/>
+</p>
+<p align="center" class="caption">
+<b>Fig:</b> <code>segmented_log</code> outline.
+</p>
+
+In this solution:
+- The record index range is split across smaller units called _segments_. The
+  index ranges of different _segments_ are non-overlapping.
+- Each _segment_ individually behaves like a log
+- For each _segment_ we maintain an entry: `segment`. This `segment` entry
+  stores the index range serviced by it along with a handle to the underlying
+  file
+- We keep the `segment` entries sorted by their starting index
+- The first n - 1 _segments_  are called _read segments_. Their `segment`
+  entries are stored in a vector called `read_segments`
+- The last _segment_ is called the _write segment_. We assign it's `segment`
+  entry to `write_segment`.
+
+Write behaviour:
+- All writes go to the `write_segment`
+- Each `segment` has a threshold on it's size
+- When the `write_segment` size exceeds it's threshold:
+  - We close the `write_segment`
+  - We reopen it as a _read segment_.
+  - We push back the newly opened _read segment_ `segment` entry to the vector
+    `read_segments`.
+  - We create a new `segment` with it index range starting after the end of the
+    previous _write segment_. This `segment` is assigned to `write_segment`
+  
+Read behaviour (for reading a record at particular index):
+- Locate the `segment` where the index falls within the `segment`'s index
+  range. Look first in the `read_segments` vector, fall back to `write_segment`
+- Read the record at the given index from the located `segment`
 
 
 ### Original description in the Apache Kafka paper
