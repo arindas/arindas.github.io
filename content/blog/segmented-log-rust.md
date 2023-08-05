@@ -224,12 +224,17 @@ now be called a `segmented_log`.
 Wait wait don't leave yet 😅. Let's take this a bit more seriously this time.
 
 Let's go back to the log. At the end of the day a log is sequential collection
-of elements. Whats the simplest data structure we can use to implement this? An
-array. However, we need persistence. So let's use a file based abstraction
-instead. (We can quite literally map a file to a process's virtual memory
-address space using the
-[`mmap`](https://man7.org/linux/man-pages/man2/mmap.2.html) system call and
-then use it like an array, but that's a topic for a different day.)
+of elements. What's the simplest data structure we can use to implement this?
+
+An array. 
+
+However, we need __persistence__. So let's use a file based abstraction
+instead. 
+
+>We can quite literally map a file to a process's virtual memory
+>address space using the
+>[`mmap()`](https://man7.org/linux/man-pages/man2/mmap.2.html) system call and
+>then use it like an array, but that's a topic for a different day.
 
 <p align="center">
 <img src="/img/log.png" alt="queue-diagram" width="50%"/>
@@ -291,6 +296,9 @@ Read behaviour (for reading a record at particular index):
 
 ### Original description in the Apache Kafka paper
 
+This section presents the `segmented_log` as described in the Apache Kafka
+[paper](https://pages.cs.wisc.edu/~akella/CS744/F17/838-CloudPapers/Kafka.pdf).
+
 ## A `segmented_log` implementation
 ### Implementation strategy
 ### Attempt `#1`: Direct attempt to translate theory
@@ -314,6 +322,10 @@ system." *Concurrency: the Works of Leslie Lamport.* 2019. 179-196.
 Jay Kreps. "The Log: What every software engineer should know about real-time
 data's unifying abstraction." *LinkedIn engineering blog.* 2013.
 <https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying>
+
+Kreps, Jay, Neha Narkhede, and Jun Rao. "Kafka: A distributed messaging system
+for log processing." _Proceedings of the NetDB._ Vol. 11. No. 2011. 2011.
+<https://pages.cs.wisc.edu/~akella/CS744/F17/838-CloudPapers/Kafka.pdf>
 
 {% end %}
 
