@@ -13,9 +13,9 @@ giscus = true
 
 ## Prologue: The Log 📃🪵
 
-First, let's clarify what we mean by a "log" in this context. Here, log
-refers to an append only ordered collection of records. The records are ordered
-by time (as a consequence of being appended to the log).
+First, let's clarify what we mean by a "log" in this context. Here, log refers
+to an append only ordered collection of records where the records are ordered
+by time.
 
 <p align="center">
 <img src="/img/log.png" alt="queue-diagram" width="50%"/>
@@ -24,9 +24,9 @@ by time (as a consequence of being appended to the log).
 <b>Fig:</b> The Log: An append only ordered collection of records.
 </p>
 
-The log indices denote a notion of time since the records are ordered by time.
-They can be even thought of as timestamps, with the convenient property of
-being decoupled from actual wall-clock time.
+Since the records are ordered by time, the log's record indices can be thought
+of as timestamps, with the convenient property of being decoupled from actual
+wall-clock time.
 
 The log indices effectively behave as Lamport clocks[^1].
 
@@ -99,7 +99,9 @@ the same state.
 
 ---
 
-#### State-machine replication
+We call this the _state machine replication_ principle.
+
+#### State machine replication
 
 Now there's a new problem: the last two rows of students can't hear the teacher
 properly. What do they do now? The teacher needs a solution that enables them
@@ -120,11 +122,11 @@ instruction sharing task to the students.
 The students come up with the following solution:
 
 They first write down the instructions sequentially on sheets of paper, and
-then perform the calculations on their own private sheet. When they are done
-writing on a sheet of paper with the instructions, they only share the sheet
-containing the instructions. They never share their private sheet. After
-passing a sheet full of instructions, the start writing the instructions on a
-new sheet of paper.
+then perform the calculations separately on their own private sheet. When they
+are done writing on a sheet of paper with the instructions, they only share the
+sheet containing the instructions. They never share their private sheet. After
+passing a sheet full of instructions, they start writing the subsequent
+instructions on a new sheet of paper.
 
 The backbenchers are able to receive the same set of instructions in the same
 sequence through the sheets. They perform the necessary calculations on their
@@ -135,15 +137,11 @@ If we inspect carefully, this mechanism of sharing the instructions through the
 sheets behaves like a log. The private sheets act as the internal states. The
 collection of sheets collectively act as a log.
 
----
-
 Now, in our case, because the backbenchers receive the same set of instructions
 in the same sequence, they go through the same set of internal states in the
 same sequence and arrive at the same final state. They effectively replicate
 the front and middle-benchers. Since, we can model students as state machines,
 we effectively did __state machine replication__ with a __log__.
-
----
 
 Finally, since the backbenchers receive the instructions through the log and
 not directly from the teacher, they lag behind a bit but eventually arrive at
@@ -152,7 +150,7 @@ the same results. So we can say there is a __replication lag__.
 These concepts directly translate to distributed systems. Consider this:
 
 There is a database partition in a distributed database responsible for a
-certain subset of data. When any data manipulation queries are route to it, it
+certain subset of data. When any data manipulation queries are routed to it, it
 has to handle the queries. Instead of directly committing the effect of the
 queries on the underlying storage, it first writes the operations to be applied
 on the local storage, one-by-one into a log called the "write-ahead-log". Then
@@ -196,7 +194,7 @@ requests due to lack of resources. So instead, it can buffer the requests in a
 message queue. A different server can then pick up the requests one-by-one and
 handle them.
 
-Now it's not necessary that all the requests have to be handle by the same
+Now it's not necessary that all the requests have to be handled by the same
 server. Because the log is shared, different servers may choose to share the
 load with each other. In this case, the requests are distributed between the
 servers to load-balance the requests. (Provided that there is no causal
