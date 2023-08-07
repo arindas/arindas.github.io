@@ -10,6 +10,7 @@ tags = ["mlops", "message-queue", "ml-inference"]
 toc = true
 katex = true
 giscus = true
+quick_navigation_buttons = true
 +++
 
 _This was originally written for a talk at TFUG Kolkata. Read the slides

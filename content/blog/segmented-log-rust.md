@@ -9,6 +9,8 @@ tags = ["rust", "tokio", "glommio", "segmented-log", "message-queue", "distribut
 [extra]
 toc = true
 giscus = true
+quick_navigation_buttons = true
+header_image = "/img/segmented-log-basic-intro.png"
 +++
 
 ## Prologue: The Log 📃🪵
