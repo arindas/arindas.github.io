@@ -150,26 +150,26 @@ Finally, since the backbenchers receive the instructions through the log and
 not directly from the teacher, they lag behind a bit but eventually arrive at
 the same results. So we can say there is a __replication lag__.
 
-These concepts directly translate to distributed systems. Consider this:
-
-There is a database partition in a distributed database responsible for a
-certain subset of data. When any data manipulation queries are routed to it, it
-has to handle the queries. Instead of directly committing the effect of the
-queries on the underlying storage, it first writes the operations to be applied
-on the local storage, one-by-one into a log called the "write-ahead-log". Then
-it applies the operations from the write ahead log to the local storage.
-
-In case there is a database failure, it can re-apply the operations in the
-write-ahead-log from the last committed entry and arrive at the same state.
-
-When this database partition needs to replicate itself to other follower
-partitions, it simply replicates the write-ahead-log to the followers instead
-of copying over the entire materialized state. The followers can use the same
-write ahead log to arrive to the same state as the leader partition.
-
-Now the follower partitions, have to receive the write-ahead-log first over the
-network. Only then can they apply the operations. As a result they lag behind
-the leader. This is replication lag.
+>These concepts directly translate to distributed systems. Consider this:
+>
+>There is a database partition in a distributed database responsible for a
+>certain subset of data. When any data manipulation queries are routed to it, it
+>has to handle the queries. Instead of directly committing the effect of the
+>queries on the underlying storage, it first writes the operations to be applied
+>on the local storage, one-by-one into a log called the "write-ahead-log". Then
+>it applies the operations from the write ahead log to the local storage.
+>
+>In case there is a database failure, it can re-apply the operations in the
+>write-ahead-log from the last committed entry and arrive at the same state.
+>
+>When this database partition needs to replicate itself to other follower
+>partitions, it simply replicates the write-ahead-log to the followers instead
+>of copying over the entire materialized state. The followers can use the same
+>write ahead log to arrive to the same state as the leader partition.
+>
+>Now the follower partitions, have to receive the write-ahead-log first over the
+>network. Only then can they apply the operations. As a result they lag behind
+>the leader. This is replication lag.
 
 #### Asynchronous processing
 
