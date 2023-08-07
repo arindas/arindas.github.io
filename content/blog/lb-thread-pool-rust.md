@@ -10,6 +10,7 @@ tags = ["thread-pool", "concurrency", "rust", "priority-queue", "binary-heap"]
 toc = true
 giscus = true
 quick_navigation_buttons = true
+header_image = "https://cdn.hashnode.com/res/hashnode/image/upload/v1644411476413/2aS_z0rJP.png?w=1600&h=840&fit=crop&crop=entropy&auto=compress,format&format=webp"
 +++
 
 ![thread-pool](https://cdn.hashnode.com/res/hashnode/image/upload/v1644411476413/2aS_z0rJP.png?w=1600&h=840&fit=crop&crop=entropy&auto=compress,format&format=webp)

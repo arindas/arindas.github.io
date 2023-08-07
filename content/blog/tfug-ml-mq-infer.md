@@ -11,6 +11,7 @@ toc = true
 katex = true
 giscus = true
 quick_navigation_buttons = true
+header_image = "https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/multi-stage-processing.drawio.png"
 +++
 
 _This was originally written for a talk at TFUG Kolkata. Read the slides
