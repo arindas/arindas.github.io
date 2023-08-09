@@ -14,6 +14,8 @@ quick_navigation_buttons = true
 header_image = "/img/segmented-log-basic-intro.png"
 +++
 
+_Psst._ Do you already know segmented logs well? If yes, jump [here](#attempt-2-support-streaming-writes-decouple-persistence).
+
 ## Prologue: The Log 📃🪵
 
 First, let's clarify what we mean by a "log" in this context. Here, log refers
@@ -302,11 +304,176 @@ Read behaviour (for reading a record at particular index):
 This section presents the `segmented_log` as described in the Apache Kafka
 [paper](https://pages.cs.wisc.edu/~akella/CS744/F17/838-CloudPapers/Kafka.pdf).
 
-## A `segmented_log` implementation
-### Implementation strategy
-### Attempt `#1`: Direct attempt to translate theory
-### Attempt `#2`: Unify async runtimes and storage mechanisms
+<p align="center">
+<img src="/img/kafka-segmented-log.png" alt="kafka-segmented-log"/>
+</p>
+<p align="center" class="caption">
+<b>Fig:</b> <code>segmented_log</code> <i>(Fig. 2)</i> from the the Apache Kafka paper.
+</p>
 
+>__Simple storage__: Kafka has a very simple storage layout. Each
+>partition of a topic corresponds to a logical log. Physically, a log
+>is implemented as a set of segment files of approximately the
+>same size (e.g., 1GB). Every time a producer publishes a message
+>to a partition, the broker simply appends the message to the last
+>segment file. For better performance, we flush the segment files to
+>disk only after a configurable number of messages have been
+>published or a certain amount of time has elapsed. A message is
+>only exposed to the consumers after it is flushed.
+>
+>Unlike typical messaging systems, a message stored in Kafka
+>doesn’t have an explicit message id. Instead, each message is
+>addressed by its logical offset in the log. This avoids the overhead
+>of maintaining auxiliary, seek-intensive random-access index
+>structures that map the message ids to the actual message
+>locations. Note that our message ids are increasing but not
+>consecutive. To compute the id of the next message, we have to
+>add the length of the current message to its id. From now on, we
+>will use message ids and offsets interchangeably.
+>
+>A consumer always consumes messages from a particular
+>partition sequentially. If the consumer acknowledges a particular
+>message offset, it implies that the consumer has received all
+>messages prior to that offset in the partition. Under the covers, the
+>consumer is issuing asynchronous pull requests to the broker to
+>have a buffer of data ready for the application to consume. Each
+>pull request contains the offset of the message from which the
+>consumption begins and an acceptable number of bytes to fetch.
+>Each broker keeps in memory a sorted list of offsets, including the
+>offset of the first message in every segment file. The broker
+>locates the segment file where the requested message resides by
+>searching the offset list, and sends the data back to the consumer.
+>After a consumer receives a message, it computes the offset of the
+>next message to consume and uses it in the next pull request.
+>
+>The layout of an Kafka log and the in-memory index is depicted in
+>Figure 2. Each box shows the offset of a message.
+
+The main difference here is that instead of referring to records with a simple
+index, we refer to it with a logical offset. This is important because the
+offset is dependent on the record sizes. The offset for next record has to be
+calculated as the sum of current record offset and current record size.
+
+## A `segmented_log` implementation
+
+This section presents two implementations of the `segmented_log`. The second
+implementation was made to overcome the limitations of the first one.
+
+### Attempt `#1`: Direct implementation based on the Kafka paper
+
+The code for this section can be found at
+[github.com/arindas/laminarmq@ed4beea](https://github.com/arindas/laminarmq/tree/ed4beea210b3ae6174959935c595f4f53d437ac7)
+
+#### Implementation outline
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/arindas/laminarmq/assets/assets/diagrams/laminarmq-segmented-log.svg" alt="segmented_log"/>
+</p>
+<p align="center">
+<b>Fig:</b> Data organisation for persisting a <code>segmented_log</code> on a <code>*nix</code> file system.
+</p>
+
+A segmented log is a collection of read segments and a single write segment.
+Each "segment" is backed by a storage file on disk called "store". The offset
+of the first record in a segment is the `base_offset`.
+
+The log is:
+- "immutable", since only "append", "read" and "truncate" operations are
+  allowed. It is not possible to update or delete records from the middle of
+  the log.
+- "segmented", since it is composed of segments, where each segment services
+  records from a particular range of offsets.
+
+All writes go to the write segment. A new record is written at `write_segment.next_offset`.
+
+When we max out the capacity of the write segment, we close the write segment
+and reopen it as a read segment. The re-opened segment is added to the list of
+read segments. A new write segment is then created with `base_offset` equal to
+the `next_offset` of the previous write segment.
+
+When reading from a particular offset, we linearly check which segment contains
+the given read segment. If a segment capable of servicing a read from the given
+offset is found, we read from that segment. If no such segment is found among
+the read segments, we default to the write segment. The following scenarios may
+occur when reading from the write segment in this case:
+- The write segment has synced the messages including the message at the given
+  offset. In this case the record is read successfully and returned.
+- The write segment hasn't synced the data at the given offset. In this case
+  the read fails with a segment I/O error.
+- If the offset is out of bounds of even the write segment, we return an "out
+  of bounds" error.
+
+### Attempt `#2`: Support streaming writes, decouple persistence
+
+The code for this section can be found at
+[github.com/arindas/laminarmq@3b2d7d0](https://github.com/arindas/laminarmq/tree/3b2d7d01a7be933236c7ef604add3c4cbd385b96)
+
+#### Implementation outline
+
+While the conventional `segmented_log` data structure is quite performant for a
+`commit_log` implementation, it still requires the following properties to hold
+true for the record being appended:
+- We have the entire record in memory
+- We know the record bytes' length and record bytes' checksum before the record
+  is appended
+
+It's not possible to know this information when the record bytes are read from
+an asynchronous stream of bytes. Without the enhancements, we would have to
+concatenate intermediate byte buffers to a vector. This would not only incur
+more allocations, but also slow down our system.
+
+Hence, to accommodate this use case, we introduced an intermediate indexing
+layer to our design.
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/arindas/laminarmq/assets/assets/diagrams/laminarmq-indexed-segmented-log-landscape.svg" alt="segmented_log" />
+</p>
+
+```text
+//! Index and position invariants across segmented_log
+
+// segmented_log index invariants
+segmented_log.lowest_index  = segmented_log.read_segments[0].lowest_index
+segmented_log.highest_index = segmented_log.write_segment.highest_index
+
+// record position invariants in store
+records[i+1].position = records[i].position + records[i].record_header.length
+
+// segment index invariants in segmented_log
+segments[i+1].base_index = segments[i].highest_index
+                         = segments[i].index[index.len-1].index + 1
+```
+<p align="center">
+<b>Fig:</b> Data organisation for persisting a <code>segmented_log</code> on a
+<code>*nix</code> file system.
+</p>
+
+In the new design, instead of referring to records with a raw offset, we refer
+to them with indices. The index in each segment translates the record indices
+to raw file position in the segment store file.
+
+Now, the store append operation accepts an asynchronous stream of bytes instead
+of a contiguously laid out slice of bytes. We use this operation to write the
+record bytes, and at the time of writing the record bytes, we calculate the
+record bytes' length and checksum. Once we are done writing the record bytes to
+the store, we write it's corresponding `record_header` (containing the checksum
+and length), position and index as an `index_record` in the segment index.
+
+This provides two quality of life enhancements:
+- Allow asynchronous streaming writes, without having to concatenate
+  intermediate byte buffers
+- Records are accessed much more easily with easy to use indices
+
+Now, to prevent a malicious user from overloading our storage capacity and
+memory with a maliciously crafted request which infinitely loops over some data
+and sends it to our server, we have provided an optional `append_threshold`
+parameter to all append operations. When provided, it prevents streaming append
+writes to write more bytes than the provided `append_threshold`.
+
+At the segment level, this requires us to keep a segment overflow capacity. All
+segment append operations now use `segment_capacity - segment.size +
+segment_overflow_capacity` as the `append_threshold` value. A good
+`segment_overflow_capacity` value could be `segment_capacity / 2`.
 
 ## Conclusion
 
