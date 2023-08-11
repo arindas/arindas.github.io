@@ -429,7 +429,7 @@ layer to our design.
 <img src="https://raw.githubusercontent.com/arindas/laminarmq/assets/assets/diagrams/laminarmq-indexed-segmented-log-landscape.svg" alt="segmented_log" />
 </p>
 
-```text
+```
 //! Index and position invariants across segmented_log
 
 // segmented_log index invariants
