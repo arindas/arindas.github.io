@@ -110,7 +110,7 @@ We call this the _state machine replication_ principle.
 
 Now there's a new problem: the last two rows of students can't hear the teacher
 properly. What do they do now? The teacher needs a solution that enables them
-to give them the same set of instructions to the backbenchers without actually
+to give the same set of instructions to the backbenchers without actually
 giving them the answers.
 
 The solution here is to give the instructions in writing. However, in an
@@ -362,7 +362,7 @@ implementation was made to overcome the limitations of the first one.
 ### Attempt `#1`: Direct implementation based on the Kafka paper
 
 The code for this section can be found at
-[github.com/arindas/laminarmq@ed4beea](https://github.com/arindas/laminarmq/tree/ed4beea210b3ae6174959935c595f4f53d437ac7)
+[laminarmq@ed4beea/src/commit_log](https://github.com/arindas/laminarmq/tree/ed4beea210b3ae6174959935c595f4f53d437ac7/src/commit_log)
 
 #### Implementation outline
 
@@ -406,7 +406,9 @@ occur when reading from the write segment in this case:
 ### Attempt `#2`: Support streaming writes, decouple persistence
 
 The code for this section can be found at
-[github.com/arindas/laminarmq@3b2d7d0](https://github.com/arindas/laminarmq/tree/3b2d7d01a7be933236c7ef604add3c4cbd385b96)
+[laminarmq@e06aa58/src/storage](https://github.com/arindas/laminarmq/tree/e06aa58256a509444f4144b1d1c236587e075764/src/storage)<br/>
+The benchmarks can be found at
+[laminarmq@e06aa58/benches](https://github.com/arindas/laminarmq/tree/e06aa58256a509444f4144b1d1c236587e075764/benches)
 
 #### Implementation outline
 
