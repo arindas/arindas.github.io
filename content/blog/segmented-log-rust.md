@@ -14,7 +14,7 @@ quick_navigation_buttons = true
 header_image = "/img/segmented-log-basic-intro.png"
 +++
 
-_Psst._ Do you already know segmented logs well? If yes, jump [here](#attempt-2-support-streaming-writes-decouple-persistence).
+>_Psst._ Do you already know segmented logs well? If yes, jump [here](#a-segmented-log-implementation).
 
 ## Prologue: The Log 📃🪵
 
@@ -88,8 +88,9 @@ number, they scored full marks.
 
 Notice that the students must follow the following to get full marks:
 - Start from the same correct initial number
-- Apply all the operations correctly _without any random mistakes_ in the
-_correct pre-determined_ way.
+- Apply all the operations correctly in the given _order_, _without random
+  mistakes_ in the correct _pre-determined_ way.
+
 
 With computer science, we can model the students as _deterministic_ state
 machines, the students' `current_number` as their internal state, and the
@@ -214,7 +215,7 @@ Jay Krep's (co-creator of Apache Kafka) excellent blog post on this topic
 
 ## Segmented Log 🪚🪵
 
-It might come as a surpise, but we have already come across a `segmented_log`
+It might come as a surpise, but we have already come across a _segmented log_
 in the previous example.
 
 ### Introduction
@@ -224,9 +225,9 @@ collectively behaved as a log. We can also say that the _instruction log_ was
 _segmented_ across the different sheets of paper.
 
 Call the individual sheets of paper _segments_. The collection of sheets can
-now be called a `segmented_log`.
+now be called a _segmented log_.
 
-Wait wait don't leave yet 😅. Let's take this a bit more seriously this time.
+Wait wait, don't leave yet! 😅 Let's take this a bit more seriously this time.
 
 Let's go back to the log. At the end of the day a log is sequential collection
 of elements. What's the simplest data structure we can use to implement this?
@@ -245,7 +246,7 @@ instead.
 <img src="/img/log.png" alt="queue-diagram" width="50%"/>
 </p>
 <p align="center" class="caption">
-<b>Fig:</b>: A log implementation based on a file.
+<b>Fig:</b> A log implementation based on a file.
 </p>
 
 Since our file based abstraction needs to support an append only
@@ -477,7 +478,7 @@ segment append operations now use `segment_capacity - segment.size +
 segment_overflow_capacity` as the `append_threshold` value. A good
 `segment_overflow_capacity` value could be `segment_capacity / 2`.
 
-## Conclusion
+## Closing notes
 
 This concludes the implementation.
 
