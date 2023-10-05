@@ -1,7 +1,7 @@
 +++
 title = "Building Segmented Logs in Rust: From Theory to Production!"
 date = 2023-08-01
-description = "Explore a Rust implementation of the persistence mechanism behind message-queues and write-ahead-logs in databases. Embark on a journey from the original segmented log research paper to a production grade fully tested and benchmarked implementation."
+description = "Explore a Rust implementation of the persistence mechanism behind message-queues and write-ahead-logs in databases. Embark on a journey from the original segmented log research paper to a production grade, fully tested and benchmarked implementation."
 draft = true
 
 [taxonomies]
@@ -357,15 +357,10 @@ calculated as the sum of current record offset and current record size.
 
 ## A `segmented_log` implementation
 
-This section presents two implementations of the `segmented_log`. The second
-implementation was made to overcome the limitations of the first one.
+The code for this section is in this repository: <https://github.com/arindas/laminarmq/>
+More specifically, in the [storage module](https://github.com/arindas/laminarmq/tree/main/src/storage).
 
-### Attempt `#1`: Direct implementation based on the Kafka paper
-
-The code for this section can be found at
-[laminarmq@ed4beea/src/commit_log](https://github.com/arindas/laminarmq/tree/ed4beea210b3ae6174959935c595f4f53d437ac7/src/commit_log)
-
-#### Implementation outline
+### Implementation outline
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/laminarmq/assets/assets/diagrams/laminarmq-segmented-log.svg" alt="segmented_log"/>
@@ -404,14 +399,7 @@ occur when reading from the write segment in this case:
 - If the offset is out of bounds of even the write segment, we return an "out
   of bounds" error.
 
-### Attempt `#2`: Support streaming writes, decouple persistence
-
-The code for this section can be found at
-[laminarmq@e06aa58/src/storage](https://github.com/arindas/laminarmq/tree/e06aa58256a509444f4144b1d1c236587e075764/src/storage)<br/>
-The benchmarks can be found at
-[laminarmq@e06aa58/benches](https://github.com/arindas/laminarmq/tree/e06aa58256a509444f4144b1d1c236587e075764/benches)
-
-#### Implementation outline
+### Enhancements to the design to enable streaming writes
 
 While the conventional `segmented_log` data structure is quite performant for a
 `commit_log` implementation, it still requires the following properties to hold
@@ -477,6 +465,530 @@ At the segment level, this requires us to keep a segment overflow capacity. All
 segment append operations now use `segment_capacity - segment.size +
 segment_overflow_capacity` as the `append_threshold` value. A good
 `segment_overflow_capacity` value could be `segment_capacity / 2`.
+
+### Component implementation
+
+We now proceed in a bottom-up fashion to implement the entirety of an "indexed
+segmented log".
+
+#### `AsyncIndexedRead` (_trait_)
+
+If we notice carefully, there is a common thread between `Index`, `Segment` and
+even `SegmentedLog` as a whole. Even though they are at different levels in the
+compositional hierarchy, the share some similar _traits_:
+- They allow reading items from specific logical indices
+- They have a notion of highest index and lowest index
+- The read operation has to be asynchronous in nature to support both in-memory
+  and on-disk storage mechanisms.
+
+Let's formalize these notions:
+
+```rust
+/// Collection providing asynchronous read access to an indexed set of records (or 
+/// values).
+#[async_trait(?Send)]
+pub trait AsyncIndexedRead {
+    /// Error that can occur during a read operation.
+    type ReadError: std::error::Error;
+
+    /// Value to be read.
+    type Value;
+
+    /// Type to index with.
+    type Idx: Unsigned + CheckedSub + ToPrimitive + Ord + Copy;
+
+    /// Reads the value at the given index.
+    async fn read(&self, idx: &Self::Idx) -> Result<Self::Value, Self::ReadError>;
+
+    /// Index upper exclusive bound
+    fn highest_index(&self) -> Self::Idx;
+
+    /// Index lower inclusive bound
+    fn lowest_index(&self) -> Self::Idx;
+
+    /// Returns whether the given index is within the index bounds of this
+    /// collection.
+    ///
+    /// This method checks the following condition:
+    /// `lowest_index <= idx < highest_index`
+    fn has_index(&self, idx: &Self::Idx) -> bool {
+        *idx >= self.lowest_index() && *idx < self.highest_index()
+    }
+
+    /// Returns the number of values in this collection.
+    fn len(&self) -> Self::Idx {
+        self.highest_index()
+            .checked_sub(&self.lowest_index())
+            .unwrap_or(num::zero())
+    }
+
+    /// Returns whether this collection is empty.
+    fn is_empty(&self) -> bool {
+        self.len() == num::zero()
+    }
+
+    /// Normalizes the given index between `[0, len)` by subtracting 
+    /// `lowest_index` from it.
+    ///
+    /// Returns `Some(normalized_index)` if the index is within 
+    /// bounds, `None` otherwise.
+    fn normalize_index(&self, idx: &Self::Idx) -> Option<Self::Idx> {
+        self.has_index(idx)
+            .then_some(idx)
+            .and_then(|idx| idx.checked_sub(&self.lowest_index()))
+    }
+}
+```
+
+#### `AsyncTruncate` (_trait_)
+
+Now each of our components need to support a "truncate" operation, where
+everything sequentially after a certain "mark" is removed. This notion
+can be expressed as a _trait_:
+
+```rust
+/// Trait representing a truncable collection of records, which can be truncated after a
+// "mark".
+#[async_trait(?Send)]
+pub trait AsyncTruncate {
+    /// Error that can occur during a truncation operation.
+    type TruncError: std::error::Error;
+
+    /// Type to denote a truncation "mark", after which the collection will be truncated.
+    type Mark: Unsigned;
+
+    /// Truncates this collection after the given mark, such that this collection
+    /// contains records only upto this "mark". (item at "mark" is excluded)
+    async fn truncate(&mut self, mark: &Self::Mark) -> Result<(), Self::TruncError>;
+}
+```
+
+#### `AsyncConsume` (_trait_)
+
+Next, every abstraction related to storage needs to be safely closed to persist
+data, or be removed all together. We call such operations "consume" operations.
+As usual, we codify this general notion with a _trait_:
+
+```rust
+/// Trait representing a collection that can be closed or removed entirely.
+#[async_trait(?Send)]
+pub trait AsyncConsume {
+    /// Error that can occur during a consumption operation.
+    type ConsumeError: std::error::Error;
+
+    /// Removes all storage associated with this collection.
+    ///
+    /// The records in this collection are completely removed.
+    async fn remove(self) -> Result<(), Self::ConsumeError>;
+
+    /// Closes this collection.
+    ///
+    /// One would need to re-qcquire a handle to this collection from the storage
+    /// in-order to access the records ot this collection again.
+    async fn close(self) -> Result<(), Self::ConsumeError>;
+}
+```
+
+#### `Sizable` (_trait_)
+
+Every entity capable of storing data needs a mechanism for measuring it's
+storage footprint i.e size in number of bytes.
+
+```rust
+/// Trait representing collections which have a measurable size in number of bytes.
+pub trait Sizable {
+    /// Type to represent the size of this collection in number of bytes.
+    type Size: Unsigned + FromPrimitive + Sum + Ord;
+
+    /// Returns the size of this collection in butes.
+    fn size(&self) -> Self::Size;
+}
+```
+
+#### `Storage` (_trait_)
+
+Finally, we need a mechanism to read and persist data. This mechanism needs to
+support reads at random positions and appends to the end.
+
+"But Arindam!", you interject. "Such a mechanism exists! It's called a file.",
+you say triumphantly. And you wouldn't be wrong. However we have the following
+additional requirements:
+- It has to be cross platorm and independent of async rumtimes.
+- It needs to provide a simple API for random reads without having to seek some
+  pointer.
+- It needs to support appending a stream of byte slices.
+
+Alright, let's begin:
+
+```rust
+#[derive(Debug)]
+pub struct StreamUnexpectedLength;
+
+// ... impl Display for StreamUnexpectedLength ...
+
+impl std::error::Error for StreamUnexpectedLength {}
+
+/// Trait representing a read-append-truncate storage media.
+#[async_trait(?Send)]
+pub trait Storage:
+    AsyncTruncate<Mark = Self::Position, TruncError = Self::Error>
+    + AsyncConsume<ConsumeError = Self::Error>
+    + Sizable<Size = Self::Position>
+{
+    /// Type to represent the content bytes of this storage media.
+    type Content: Deref<Target = [u8]> + Unpin;
+
+    /// Type to represent data positions inside this storage media.
+    type Position: Unsigned + FromPrimitive + ToPrimitive + Sum + Ord + Copy;
+
+    /// Error that can occur during storage operations.
+    type Error: std::error::Error + From<StreamUnexpectedLength>;
+
+    /// Appends the given slice of bytes to the end of this storage.
+    ///
+    /// Returns the position at which the slice was written, and the number
+    /// of bytes written.
+    async fn append_slice(
+        &mut self,
+        slice: &[u8],
+    ) -> Result<(Self::Position, Self::Size), Self::Error>;
+
+    /// Reads `size` number of bytes from the given `position`.
+    ///
+    /// Returns the bytes read.
+    async fn read(
+        &self,
+        position: &Self::Position,
+        size: &Self::Size,
+    ) -> Result<Self::Content, Self::Error>;
+
+} // ...where's streaming append?
+
+```
+
+First, let's unpack what's going on here:
+- We support a notion of `Content`, the slice of bytes that is read
+- We also have a notion for `Position` to identify the position of reads and
+  appends.
+- First, we have a simple `append_slice()` API the simply appends a given slice
+of bytes to the end of the storage. It returns the position at which slice was
+written, along with the number of bytes written.
+- Next, we have a `read()` API for reading a slice of bytes of a particular
+  `size` from a particular `position`. It returns a `Content`, the associated
+  type used to represent slice of bytes that are read from this storage.
+- Every operation here is fallible. So errors and `Result`(s) are natural.
+  However, what's up with `StreamUnexpectedLength`? Keep that in mind for now.
+- Our storage can be truncated. We inherit from `AsyncTruncate`. We treat
+  `Position` as the truncation mark.
+- Our storage is also consumable. We inherit from `AsyncConsume` for `close()`
+  and `remove()`
+- Finally, our storage has a notion of size with `Sizable`. We use our `Position`
+type for representing sizes.
+
+Now, we need to support streaming appends with the existing methods.
+
+Let's begin by asking ourselves, what exactly are the arguments here?
+
+A stream of byte slice. How do we represent that?
+
+Let's start with just a slice. Let's call it `XBuf`. The bound for that is
+simple enough:
+
+```rust
+XBuf: Deref<Target = [u8]>
+```
+
+Now we need a stream of these. Also note, that reading a single item from the
+stream is also fallible.
+
+First let's just consider a stream of these. Let's call the stream `X`:
+```rust
+X: Stream<Item = XBuf>
+```
+
+Now, to let's consider an error type `XE`. To make every read from the stream
+fallible, `X` needs the following bounds:
+
+```rust
+X: Stream<Item = Result<XBuf, XE>>
+```
+
+Now our stream needs to be `Unpin` so that it can be moved into our function.
+
+>This blog post: <https://blog.cloudflare.com/pin-and-unpin-in-rust/>, goes into
+>detail about why `Pin` and `Unpin` are necessary. Also don't forget to consult
+>the standard library documentation:
+>- `pin` module: <https://doc.rust-lang.org/std/pin/index.html>
+>- `Pin` struct: <https://doc.rust-lang.org/std/pin/struct.Pin.html>
+>- `Unpin` marker trait: <https://doc.rust-lang.org/std/marker/trait.Unpin.html>
+
+Apart from our `Stream` argument, we also need a upper bound on the number of
+bytes to be written. A `Stream` can be infinite, but unfortunaly, compuer
+storage is not.
+
+Using the above considerations, let us outline our function:
+
+```rust
+
+    // ... inside Storage trait
+
+    async fn append<XBuf, XE, X>(
+        &mut self,
+        buf_stream: &mut X,
+        append_threshold: Option<Self::Size>,
+    ) -> Result<(Self::Position, Self::Size), Self::Error>
+    where
+        XBuf: Deref<Target = [u8]>,
+        X: Stream<Item = Result<XBuf, XE>> + Unpin,
+    {
+        /// ...
+    }
+
+```
+
+When `append_threshold` is `None`, we attempt to exhaustively read the entire
+stream to write to our storage. If it's `Some(thresh)`, we only write upto
+`thresh` bytes.
+
+Let's proceed with our implementation:
+
+```rust
+
+    // ... inside Storage trait
+
+    async fn append<XBuf, XE, X>(
+        &mut self,
+        buf_stream: &mut X,
+        append_threshold: Option<Self::Size>,
+    ) -> Result<(Self::Position, Self::Size), Self::Error>
+    where
+        XBuf: Deref<Target = [u8]>,
+        X: Stream<Item = Result<XBuf, XE>> + Unpin,
+    {
+        let (mut bytes_written, pos) = (num::zero(), self.size());
+
+        while let Some(buf) = buf_stream.next().await {
+             let stream_read_result = match (buf, append_threshold) {
+                (Ok(buf), Some(w_cap)) => {
+                    match Self::Size::from_usize(buf.deref().len()) {
+                        Some(buf_len) if buf_len + bytes_written <= w_cap => Ok(buf),
+                        _ => Err::<XBuf, Self::Error>(StreamUnexpectedLength.into()),
+                    }
+                }
+                (Ok(buf), None) => Ok(buf),
+                (Err(_), _) => Err(StreamUnexpectedLength.into()),
+            };
+
+            // ...
+        }
+    }
+
+```
+
+We maintain a counter for the number of bytes already written: `bytes_written`.
+For every byte slice read from the stream, we check if it can be accomodated in
+our storage in accordance with the `append_threshold`. If not, we error out.
+
+We also keep the write position around in `pos`. It is simply the size of this
+storage before we append anything.
+
+Now, let's try to append it:
+
+```rust
+
+        // ... inside Storage::append
+
+        while let Some(buf) = buf_stream.next().await {
+             let stream_read_result = match (buf, append_threshold) {
+                (Ok(buf), Some(w_cap)) => {
+                    match Self::Size::from_usize(buf.deref().len()) {
+                        Some(buf_len) if buf_len + bytes_written <= w_cap => Ok(buf),
+                        _ => Err::<XBuf, Self::Error>(StreamUnexpectedLength.into()),
+                    }
+                }
+                (Ok(buf), None) => Ok(buf),
+                (Err(_), _) => Err(StreamUnexpectedLength.into()),
+            };
+
+            let append_result = match stream_read_result {
+                Ok(buf) => self.append_slice(buf.deref()).await,
+                Err(_) => Err(StreamUnexpectedLength.into()),
+            };
+        }
+
+```
+
+That's reasonable. We append if possible, and propagate the error. Continuing...
+
+```rust 
+
+
+        // ... inside Storage::append
+
+        while let Some(buf) = buf_stream.next().await {
+             let stream_read_result = match (buf, append_threshold) {
+                (Ok(buf), Some(w_cap)) => {
+                    match Self::Size::from_usize(buf.deref().len()) {
+                        Some(buf_len) if buf_len + bytes_written <= w_cap => Ok(buf),
+                        _ => Err::<XBuf, Self::Error>(StreamUnexpectedLength.into()),
+                    }
+                }
+                (Ok(buf), None) => Ok(buf),
+                (Err(_), _) => Err(StreamUnexpectedLength.into()),
+            };
+
+            let append_result = match stream_read_result {
+                Ok(buf) => self.append_slice(buf.deref()).await,
+                Err(_) => Err(StreamUnexpectedLength.into()),
+            };
+
+            match append_result {
+                Ok((_, buf_bytes_w)) => {
+                    bytes_written = bytes_written + buf_bytes_w;
+                }
+                Err(error) => {
+                    self.truncate(&pos).await?;
+                    return Err(error);
+                }
+            };
+        }
+
+```
+
+So for every byte slice, we add the number of bytes in it to bytes_written, if
+everything goes well. However, if anything goes wrong:
+- We rollback all writes by truncating at the position before all writes,
+  stored in `pos`.
+- We return the error encountered.
+
+Finally, once we exit the loop, we return the position at which the record
+stream was written, along with the total bytes written:
+
+```rust
+
+        } // ... end of: while let Some(buf) = buf_stream.next().await {...}
+
+        Ok((pos, bytes_written))
+
+    } // ... end of Storage::append
+```
+
+We can coalesce the match blocks together by inilining all the results. Putting
+everything all together:
+
+```rust
+/// Error to represent undexpect stream termination or overflow, i.e a stream 
+/// of unexpected length.
+#[derive(Debug)]
+pub struct StreamUnexpectedLength;
+
+impl std::fmt::Display for StreamUnexpectedLength {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for StreamUnexpectedLength {}
+
+/// Trait representing a read-append-truncate storage media.
+#[async_trait(?Send)]
+pub trait Storage:
+    AsyncTruncate<Mark = Self::Position, TruncError = Self::Error>
+    + AsyncConsume<ConsumeError = Self::Error>
+    + Sizable<Size = Self::Position>
+{
+    /// Type to represent the content bytes of this storage media.
+    type Content: Deref<Target = [u8]> + Unpin;
+
+    /// Type to represent data positions inside this storage media.
+    type Position: Unsigned + FromPrimitive + ToPrimitive + Sum + Ord + Copy;
+
+    /// Error that can occur during storage operations.
+    type Error: std::error::Error + From<StreamUnexpectedLength>;
+
+    /// Appends the given slice of bytes to the end of this storage.
+    ///
+    /// Implementations must update internal cursor or write pointers, if any,
+    /// when implementing this method.
+    async fn append_slice(
+        &mut self,
+        slice: &[u8],
+    ) -> Result<(Self::Position, Self::Size), Self::Error>;
+
+    /// Appends a stream of byte slices to the end of this storage.
+    ///
+    /// This method writes at max `append_threshold` number of bytes from the
+    /// given stream of bytes slices. If the provided `append_threshold` is
+    /// `None`, no such check is enforced; we attempt to write the entire
+    /// stream until it's exhausted.
+    ///
+    /// The following error scenarios may occur during writing:
+    /// - `append_threshold` is `Some(_)`, and the stream contains more bytes
+    /// than the threshold
+    /// - The stream unexpectedly yields an error when attempting to read the
+    /// next byte slice from the stream
+    /// - There is a storage error when attempting to write one of the byte
+    /// slices from the stream.
+    ///
+    /// In all of the above error cases, we truncate this storage media with
+    /// the size of the storage media before we started the append operation,
+    /// effectively rolling back any writes.
+    ///
+    /// Returns the position where the bytes were written and the number of
+    /// bytes written.
+    async fn append<XBuf, XE, X>(
+        &mut self,
+        buf_stream: &mut X,
+        append_threshold: Option<Self::Size>,
+    ) -> Result<(Self::Position, Self::Size), Self::Error>
+    where
+        XBuf: Deref<Target = [u8]>,
+        X: Stream<Item = Result<XBuf, XE>> + Unpin,
+    {
+        let (mut bytes_written, pos) = (num::zero(), self.size());
+
+        while let Some(buf) = buf_stream.next().await {
+            match match match (buf, append_threshold) {
+                (Ok(buf), Some(w_cap)) => {
+                    match Self::Size::from_usize(buf.deref().len()) {
+                        Some(buf_len) if buf_len + bytes_written <= w_cap => Ok(buf),
+                        _ => Err::<XBuf, Self::Error>(StreamUnexpectedLength.into()),
+                    }
+                }
+                (Ok(buf), None) => Ok(buf),
+                (Err(_), _) => Err(StreamUnexpectedLength.into()),
+            } {
+                Ok(buf) => self.append_slice(buf.deref()).await,
+                Err(_) => Err(StreamUnexpectedLength.into()),
+            } {
+                Ok((_, buf_bytes_w)) => {
+                    bytes_written = bytes_written + buf_bytes_w;
+                }
+                Err(error) => {
+                    self.truncate(&pos).await?;
+                    return Err(error);
+                }
+            };
+        }
+
+        Ok((pos, bytes_written))
+    }
+
+    /// Reads `size` number of bytes from the given `position`.
+    ///
+    /// Returns the bytes read.
+    async fn read(
+        &self,
+        position: &Self::Position,
+        size: &Self::Size,
+    ) -> Result<Self::Content, Self::Error>;
+}
+```
+
+Now to answer one of the initial questions, we needed `StreamUnexpectedLength`
+as a sentinel error type to represent the error case when the stream
+unexpectedly errors out while reading, or has more bytes in total than our
+`append_threshold`.
 
 ## Closing notes
 
