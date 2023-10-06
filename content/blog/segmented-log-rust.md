@@ -698,10 +698,10 @@ simple enough:
 XBuf: Deref<Target = [u8]>
 ```
 
-Now we need a stream of these. Also note, that reading a single item from the
-stream is also fallible.
+Now we need a stream of these. Also note that we need the reading of a single
+item from the stream to also be fallible.
 
-First let's just consider a stream of these. Let's call the stream `X`:
+First let's just consider a stream of `XBuf`. Let's call the stream `X`:
 ```rust
 X: Stream<Item = XBuf>
 ```
@@ -718,12 +718,12 @@ Now our stream needs to be `Unpin` so that it can be moved into our function.
 >This blog post: <https://blog.cloudflare.com/pin-and-unpin-in-rust/>, goes into
 >detail about why `Pin` and `Unpin` are necessary. Also don't forget to consult
 >the standard library documentation:
->- `pin` module: <https://doc.rust-lang.org/std/pin/index.html>
->- `Pin` struct: <https://doc.rust-lang.org/std/pin/struct.Pin.html>
->- `Unpin` marker trait: <https://doc.rust-lang.org/std/marker/trait.Unpin.html>
+>- `pin` _module_: <https://doc.rust-lang.org/std/pin/index.html>
+>- `Pin` _struct_: <https://doc.rust-lang.org/std/pin/struct.Pin.html>
+>- `Unpin` marker _trait_: <https://doc.rust-lang.org/std/marker/trait.Unpin.html>
 
 Apart from our `Stream` argument, we also need a upper bound on the number of
-bytes to be written. A `Stream` can be infinite, but unfortunaly, compuer
+bytes to be written. A `Stream` can be infinite, but unfortunaly, computer
 storage is not.
 
 Using the above considerations, let us outline our function:
@@ -989,6 +989,106 @@ Now to answer one of the initial questions, we needed `StreamUnexpectedLength`
 as a sentinel error type to represent the error case when the stream
 unexpectedly errors out while reading, or has more bytes in total than our
 `append_threshold`.
+
+#### `Record` (_struct_)
+Before we move on to the concept of a `CommitLog`, we need to abstract a much
+more fundamental aspect of our implementation. How do we represent the actual
+"records"?
+
+Let's see... a record in the most general sense needs only two things:
+- The actual _value_ to be contained in the record
+- Some _metadata_ about the record
+
+So, we express that directly:
+
+```rust
+pub struct Record<M, T> {
+    pub metadata: M,
+    pub value: T,
+}
+```
+
+#### `CommitLog` (_trait_)
+
+Now, with the abstractions presented above, we are ready to express the notion
+of a `CommitLog`. The properties of a `CommitLog` are:
+1.  It allows reading records from random indices
+2.  Naturally it has some index bounds
+3.  It allows appending records which may contain a stream of byte slices as it
+  value.
+4.  It can be truncated at a specific index.
+5.  It supports `close()` and `remove()` operations to safely persist or remove
+  data respectively.
+
+All of these properties have already been represented with the traits above. We
+now use them to define the concept of a `CommitLog`:
+
+```rust
+#[async_trait::async_trait(?Send)]
+pub trait CommitLog<M, T>:
+    AsyncIndexedRead<Value = Record<M, T>, ReadError = Self::Error> // (1, 2)
+    + AsyncTruncate<Mark = Self::Idx, TruncError = Self::Error> // (4)
+    + AsyncConsume<ConsumeError = Self::Error> // (5)
+    + Sizable // Of course, we need to know total storage size
+{
+    /// Associated error type for fallible operations 
+    type Error: std::error::Error; 
+
+    // (3)
+    async fn append<X, XBuf, XE>(&mut self, record: Record<M, X>) -> Result<Self::Idx, Self::Error>
+    where
+        X: futures_lite::Stream<Item = Result<XBuf, XE>>,
+        X: Unpin + 'async_trait,
+        XBuf: std::ops::Deref<Target = [u8]>;
+
+    /// Removes expired records i.e records older than the given _expiry_duration.
+    ///
+    /// The default implementation doesn't remove any records.
+    ///
+    /// Returns the number of records removed.
+    async fn remove_expired(
+        &mut self,
+        _expiry_duration: std::time::Duration,
+    ) -> Result<Self::Idx, Self::Error> {
+        // remove zero records by default
+        async { Ok(<Self::Idx as num::Zero>::zero()) }.await
+    } // ... what's this?
+}
+```
+
+Optionally, a `CommitLog` implementation might need to remove some records that
+are older by a certain measure of time. Let's call them _expired_ records. So
+we provide a function for that in case different implementations need it.
+
+---
+
+Using the `Record` struct and the different traits that we have described so
+far, we can implement any component of the `SegmentedLog`. These abstractions
+form the _basis_ of our implementation.
+
+---
+
+#### `Index` (_struct_)
+Let's start with our first direct component of our indexed segmented log, the
+`Index`.
+
+First, we need to answer two primary questions:
+- What kind of data are we storing?
+- In what layout will we store the said data?
+
+So recall, at a high level, an `Index` is logical mapping from indices to byte
+positions on storage.
+
+So this at least has to be the 2-tuple: `(record_index, record_position)`
+
+Now we need two additional data points:
+- Number of bytes in the record i.e `record_length`
+- A checksum of the contents of the record, e.g. crc32
+
+These two datapoints are essential to verify if the record data is valid or
+corrupted on the storage media. ("storage media" = `Storage` trait impl.)
+
+...
 
 ## Closing notes
 
