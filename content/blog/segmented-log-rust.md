@@ -1146,6 +1146,52 @@ Now, number of records is calculated as:
 len(Index) = (size(Index) - size(base_index_marker)) / IRSZ
 ```
 
+Now let's finalize the bytewise layout on storage:
+
+```
+## IndexBaseMarker (size = 16 bytes)
+┌───────────────────────────┬──────────────────────────┐
+│ base_index: u64 ([u8; 8]) │ _padding:  u64 ([u8; 8]) │
+└───────────────────────────┴──────────────────────────┘
+
+## IndexRecord (size = 16 bytes)
+┌─────────────────────────┬───────────────────────┬─────────────────────────┐
+│ checksum: u64 ([u8; 8]) │ length: u32 ([u8; 4]) │ position: u32 ([u8; 4]) │
+└─────────────────────────┴───────────────────────┴─────────────────────────┘
+```
+
+We add padding to the `IndexBaseMarker` to keep it aligned with `IndexRecord`.
+
+We represent these records as follows:
+
+```rust
+
+pub struct IndexBaseMarker {
+    pub base_index: u64,
+    _padding: u64,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct IndexRecord {
+    pub checksum: u64,
+    pub length: u32,
+    pub position: u32,
+}
+```
+
+Since we 32 bytes to represent positions of records, a `Segment` can contain
+only be upto 4GiB (2<sup>32</sup> unique byte positions = 2<sup>32</sup> bytes =
+4GiB). Practically speaking, segments generally don't exceed 1GB. If segments
+are too big, individual segments are difficult to move around. So this limit is
+not a problem.
+
+We use binary encoding to store these records.
+
+Now we could use [`serde`](https://serde.rs/) and
+[`bincode`](https://docs.rs/bincode/latest/bincode/) to serialize these records
+on Storage. However, since these records will be serialized and deserialized
+fairly often, I wanted to do it in constant stack space, with a simple API.
+
 ...
 
 ## Closing notes
