@@ -1088,6 +1088,64 @@ Now we need two additional data points:
 These two datapoints are essential to verify if the record data is valid or
 corrupted on the storage media. ("storage media" = `Storage` trait impl.)
 
+So we arrive at this 4-tuple: `(checksum, length, index, position)`
+
+Now, and `Index` stores index records sequentially. So:
+```
+index_record[i+1].index = index_record[i].index + 1
+```
+
+Now, all these 4-tuples need the exact same number of bytes to be stored. Let's
+call this size `IRSZ`. If the index records are laid out sequentially:, every
+index record will be at a position which is an integral multiple of `IRSZ`:
+
+```
+## storage (Index)
+
+(checksum, length, index, position) @ storage::position = 0
+(checksum, length, index, position) @ storage::position = 1 x IRSZ
+(checksum, length, index, position) @ storage::position = 2 x IRSZ
+(checksum, length, index, position) @ storage::position = 3 x IRSZ
+...
+```
+
+>Note: the `position` in the tuple refers to the position of the actual `Record`
+>in `Store`. `storage::position` here refers to the position within the `Index`
+>file (`Storage` impl).
+
+Due to this property, the index can be derived from the position of the record
+itself. The number of records is simply: `Index::size() / IRSZ`. Using this, we can
+conclude that storing the `index` in each `IndexRecord` is redundant.
+
+However, an `Index` can start from an arbitrary high index. Let's call this the
+`base_index`. So if we store a marker record of sorts, the contains the
+`base_index`, and then store all the index records after it sequentially, we
+can say:
+
+```
+// simple row major address calculation
+index_record_position_i = size(base_marker) + i * IRSZ
+```
+
+So now we can lay out our `IndexRecord` instances as follows:
+
+```
+## storage (Index)
+
+[base_index_marker]          @ storage::position = 0
+(checksum, length, position) @ storage::position = size(base_index_marker) + 0
+(checksum, length, position) @ storage::position = size(base_index_marker) + 1 x IRSZ
+(checksum, length, position) @ storage::position = size(base_index_marker) + 2 x IRSZ
+(checksum, length, position) @ storage::position = size(base_index_marker) + 3 x IRSZ
+...
+```
+
+Now, number of records is calculated as:
+```
+// number of records in Index
+len(Index) = (size(Index) - size(base_index_marker)) / IRSZ
+```
+
 ...
 
 ## Closing notes
