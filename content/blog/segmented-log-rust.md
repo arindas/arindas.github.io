@@ -1197,12 +1197,143 @@ not a problem.
 
 We use binary encoding to store these records.
 
-Now we could use [`serde`](https://serde.rs/) and
-[`bincode`](https://docs.rs/bincode/latest/bincode/) to serialize these records
+Now we could use [_serde_](https://serde.rs/) and
+[_bincode_](https://docs.rs/bincode/latest/bincode/) to serialize these records
 on `Storage` _impls_. However, since these records will be serialized and
-deserialized fairly often, I wanted to do it in constant stack space, with a
+deserialized fairly often, I wanted to serialize in constant space, with a
 simple API.
 
+First, let us generalize over both `IndexBaseMarker` and `IndexRecord`. We need
+to formalize an entity with the folowing properties:
+- It has a known size at compile time
+- It can be read from and written to any storage
+
+We can express this directly:
+
+```rust
+trait SizedRecord: Sized {
+    fn write<W: Write>(&self, dest: &mut W) -> std::io::Result<()>;
+
+    fn read<R: Read>(source: &mut R) -> std::io::Result<Self>;
+}
+```
+
+Now we need a kind of `SizedRecord` that can be stored on a `Storage` _impl_.
+Let's call it `PersistentSizedRecord`:
+
+```rust
+/// Wrapper struct to enable `SizedRecord` impls to be stored on Storage impls.
+///
+/// REPR_SIZE is the number of bytes required to store the inner SizedRecord.
+struct PersistentSizedRecord<SR, const REPR_SIZE: usize>(SR);
+
+impl<SR: SizedRecord, const REPR_SIZE: usize> PersistentSizedRecord<SR, REPR_SIZE> {
+    async fn read_at<S>(source: &S, position: &S::Position) -> Result<Self, IndexError<S::Error>>
+    where
+        S: Storage,
+    {
+        // read exactly REPR_SIZE bytes from source Storage impl. at the given position
+        let record_bytes = source
+            .read(
+                position,
+                &<S::Size as FromPrimitive>::from_usize(REPR_SIZE)
+                    .ok_or(IndexError::IncompatibleSizeType)?,
+            )
+            .await
+            .map_err(IndexError::StorageError)?; // read bytes for record
+
+        let mut cursor = Cursor::new(record_bytes.deref()); // wrap to a Read impl.
+
+        SR::read(&mut cursor).map(Self).map_err(IndexError::IoError) // deserialize
+    }
+
+    async fn append_to<S>(&self, dest: &mut S) -> Result<S::Position, IndexError<S::Error>>
+    where
+        S: Storage,
+    {
+        let mut buffer = [0_u8; REPR_SIZE]; // buffer to store Serialized record
+        let mut cursor = Cursor::new(&mut buffer as &mut [u8]); // wrap to a Write impl.
+
+        self.0.write(&mut cursor).map_err(IndexError::IoError)?; // serialize
+
+        let (position, _) = dest
+            .append_slice(&buffer)
+            .await
+            .map_err(IndexError::StorageError)?; // append to storage
+
+        Ok(position)
+    }
+}
+```
+
+Now we simply need to implement `SizedRecord` for `IndexBaseMarker` and
+`IndexRecord`:
+
+```rust
+impl SizedRecord for IndexBaseMarker {
+    fn write<W: Write>(&self, dest: &mut W) -> std::io::Result<()> {
+        dest.write_u64::<LittleEndian>(self.base_index)?;
+
+        Ok(())
+    }
+
+    fn read<R: Read>(source: &mut R) -> std::io::Result<Self> {
+        let base_index = source.read_u64::<LittleEndian>()?;
+
+        Ok(Self {
+            base_index,
+            _padding: 0_u64,
+        })
+    }
+}
+
+impl SizedRecord for IndexRecord {
+    fn write<W: Write>(&self, dest: &mut W) -> std::io::Result<()> {
+        dest.write_u64::<LittleEndian>(self.checksum)?;
+        dest.write_u32::<LittleEndian>(self.length)?;
+        dest.write_u32::<LittleEndian>(self.position)?;
+
+        Ok(())
+    }
+
+    fn read<R: Read>(source: &mut R) -> std::io::Result<Self> {
+        let checksum = source.read_u64::<LittleEndian>()?;
+        let length = source.read_u32::<LittleEndian>()?;
+        let position = source.read_u32::<LittleEndian>()?;
+
+        Ok(IndexRecord {
+            checksum,
+            length,
+            position,
+        })
+    }
+}
+```
+
+>[ Quiz 💡]: We dont read or write the `_padding` bytes in our `IndexBaseMarker`
+>`SizedRecord` _impl_. So how is it still aligned?
+>
+>[ A ]: Remember that we pass in a _const_ generic parameter `REPR_SIZE` when
+>creating a `PersistentSizedRecord`. When writing or reading, we always read
+>`REPR_SIZE` number of bytes, regardless of how we serialize or deserialize our
+>`IndexRecord` or `IndexBaseMarker`. In this case we just pass a `const usize`
+>with value `16`.
+
+We also declare some useful constants to keep things consistent:
+
+```rust
+/// Extension used by backing files for Index instances.
+pub const INDEX_FILE_EXTENSION: &str = "index";
+
+/// Number of bytes required for storing the base marker.
+pub const INDEX_BASE_MARKER_LENGTH: usize = 16;
+
+/// Number of bytes required for storing the record header.
+pub const INDEX_RECORD_LENGTH: usize = 16;
+
+/// Lowest underlying storage position
+pub const INDEX_BASE_POSITION: u64 = 0;
+```
 ...
 
 ## Closing notes
