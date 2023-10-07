@@ -1199,8 +1199,9 @@ We use binary encoding to store these records.
 
 Now we could use [`serde`](https://serde.rs/) and
 [`bincode`](https://docs.rs/bincode/latest/bincode/) to serialize these records
-on `Storage` _impls_. However, since these records will be serialized and deserialized
-fairly often, I wanted to do it in constant stack space, with a simple API.
+on `Storage` _impls_. However, since these records will be serialized and
+deserialized fairly often, I wanted to do it in constant stack space, with a
+simple API.
 
 ...
 
