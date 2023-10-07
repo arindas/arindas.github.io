@@ -713,7 +713,8 @@ fallible, `X` needs the following bounds:
 X: Stream<Item = Result<XBuf, XE>>
 ```
 
-Now our stream needs to be `Unpin` so that it can be moved into our function.
+Now our stream needs to be `Unpin` so that it we can safely take a `&mut`
+reference to it in our function.
 
 >This blog post: <https://blog.cloudflare.com/pin-and-unpin-in-rust/>, goes into
 >detail about why `Pin` and `Unpin` are necessary. Also don't forget to consult
@@ -814,6 +815,8 @@ Now, let's try to append it:
                 Ok(buf) => self.append_slice(buf.deref()).await,
                 Err(_) => Err(StreamUnexpectedLength.into()),
             };
+
+            // ...
         }
 
 ```
@@ -855,7 +858,7 @@ That's reasonable. We append if possible, and propagate the error. Continuing...
 
 ```
 
-So for every byte slice, we add the number of bytes in it to bytes_written, if
+So for every byte slice, we add the number of bytes in it to `bytes_written` if
 everything goes well. However, if anything goes wrong:
 - We rollback all writes by truncating at the position before all writes,
   stored in `pos`.
@@ -1029,7 +1032,7 @@ pub trait CommitLog<M, T>:
     AsyncIndexedRead<Value = Record<M, T>, ReadError = Self::Error> // (1, 2)
     + AsyncTruncate<Mark = Self::Idx, TruncError = Self::Error> // (4)
     + AsyncConsume<ConsumeError = Self::Error> // (5)
-    + Sizable // Of course, we need to know total storage size
+    + Sizable // Of course, we need to know the total storage size
 {
     /// Associated error type for fallible operations 
     type Error: std::error::Error; 
@@ -1079,7 +1082,7 @@ First, we need to answer two primary questions:
 So recall, at a high level, an `Index` is logical mapping from indices to byte
 positions on storage.
 
-So this at least has to be the 2-tuple: `(record_index, record_position)`
+So this at least has store 2-tuples of the form: `(record_index, record_position)`
 
 Now we need two additional data points:
 - Number of bytes in the record i.e `record_length`
@@ -1090,7 +1093,9 @@ corrupted on the storage media. ("storage media" = `Storage` trait impl.)
 
 So we arrive at this 4-tuple: `(checksum, length, index, position)`
 
-Now, and `Index` stores index records sequentially. So:
+Let's call this an `IndexRecord`.
+
+Now, an `Index` stores index records sequentially. So:
 ```
 index_record[i+1].index = index_record[i].index + 1
 ```
@@ -1114,8 +1119,14 @@ index record will be at a position which is an integral multiple of `IRSZ`:
 >file (`Storage` impl).
 
 Due to this property, the index can be derived from the position of the record
-itself. The number of records is simply: `Index::size() / IRSZ`. Using this, we can
-conclude that storing the `index` in each `IndexRecord` is redundant.
+itself. The number of records is simply: 
+
+```
+len(Index) = size(Index) / IRSZ
+```
+
+Using this, we can conclude that storing the `index` in each `IndexRecord` is
+redundant.
 
 However, an `Index` can start from an arbitrary high index. Let's call this the
 `base_index`. So if we store a marker record of sorts, the contains the
@@ -1127,7 +1138,7 @@ can say:
 index_record_position_i = size(base_marker) + i * IRSZ
 ```
 
-So now we can lay out our `IndexRecord` instances as follows:
+So now we can lay out our `IndexRecord` instances on storage as follows:
 
 ```
 ## storage (Index)
@@ -1165,7 +1176,6 @@ We add padding to the `IndexBaseMarker` to keep it aligned with `IndexRecord`.
 We represent these records as follows:
 
 ```rust
-
 pub struct IndexBaseMarker {
     pub base_index: u64,
     _padding: u64,
@@ -1189,7 +1199,7 @@ We use binary encoding to store these records.
 
 Now we could use [`serde`](https://serde.rs/) and
 [`bincode`](https://docs.rs/bincode/latest/bincode/) to serialize these records
-on Storage. However, since these records will be serialized and deserialized
+on `Storage` _impls_. However, since these records will be serialized and deserialized
 fairly often, I wanted to do it in constant stack space, with a simple API.
 
 ...
