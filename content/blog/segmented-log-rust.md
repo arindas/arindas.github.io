@@ -1266,7 +1266,7 @@ impl<SR: SizedRecord, const REPR_SIZE: usize> PersistentSizedRecord<SR, REPR_SIZ
 }
 ```
 
-Now we simply need to implement `SizedRecord` for `IndexBaseMarker` and
+Next, we implement the `SizedRecord` _trait_ for `IndexBaseMarker` and
 `IndexRecord`:
 
 ```rust
@@ -1345,21 +1345,61 @@ Let's assume that `Segment` files are `1GB` on average.
 
 So we can calculate as follows:
 ```
-        1GB segment file = pow(10, 6) KB = pow(10, 6) records
+            1GB Segment == pow(10, 6) * 1KB Record
 
-         1 * 1KB record  = 1 * 16B IndexRecord
-pow(10, 6) * 1KB records = pow(10, 6) * 16B IndexRecord
-                         = 16MB
+         1 * 1KB Record =>          1 * 16B IndexRecord
 
-Therefore,
-        1GB segment file => 16MB Index overhead
+pow(10, 6) * 1KB Record => pow(10, 6) * 16B IndexRecord
+                        => 16MB Index
+
+Or,         1GB Segment => 16MB Index (Result)
+
 
 e.g. 10 * 1GB segment files => 10 * 16MB Index files = 160 MB overhead
 
-     ITB total data through 1000 segmented files => 16GB overhead   
+     ITB total data through 1000 segment files => 16GB overhead
 ```
 
 Keep this calculation in mind as we proceed through our implementation.
+
+With the groundwork ready, let's begin our `Index` implementation:
+
+```rust
+pub struct Index<S, Idx> {
+    /// In memory cache of IndexRecord instaqnces
+    index_records: Option<Vec<IndexRecord>>,
+
+    base_index: Idx, /// Index stored in the first IndexRecord
+    next_index: Idx, /// Index to be stored in the next IndexRecord to be added
+
+    storage: S,      /// Underlying storage for Index
+}
+```
+
+Why do we need an in-memory cache in the fist place? Well `IndexRecord`
+instances are fairly small and there are usually few of them (`<= 1000`) in an
+`Index`. A simple in-memory cache makes sense rather than hitting the storage
+everytime. (We could probably `mmap()` but this is simple enough.)
+
+Alright then, why make it optional?
+
+Recall that for `1TB` of data with `1KB` record size, we end up having `16GB`
+of `Index` overhead. It's clearly not practical allocating this amount of
+memory, since we expect our system to able to handle this scale. So we make it
+possible to only optionally cache this. We could choose only the most
+frequently accessed or likely to be accessed `Index` instances to cache the
+`IndexRecord` instances. (Maybe an `LRUCache` of `Index` instances to be
+cached, for starters.)
+
+>One of the ambitions I had when starting out, was to enable this
+>implementation to handle `1TB` of data on a [Raspberry Pi
+>3B](https://www.raspberrypi.com/products/raspberry-pi-3-model-b/) which has
+>only `1GB` of memory. If we enforce a limit that only `10` `Index` instances
+>are cached at a time, that would be a `160MB` overhead. This would make it
+>practical to run this implementation, albeit at the cost of some latency.
+>
+>The `Index` files are still persisted on storage so there is no loss of data.
+
 ...
 
 ## Closing notes
