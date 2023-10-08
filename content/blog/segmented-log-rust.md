@@ -1396,7 +1396,7 @@ it to the `LRUCache`. When an `Index` from within the `LRUCache` is accessed,
 we update the `LRUCache` accordingly.  The `LRUCache` will have some maximum
 capacity, which decides the maximum number of `Index` instances that can be
 cached at the same time. We could replace `LRUCache` with other kinds of cache
-like `LFUCache` for different performance characteristics. The `Index` files
+(e.g. `LFUCache`) for different performance characteristics. The `Index` files
 are still persisted on storage so there is no loss of data.
 
 >I wanted this implementation to handle `1TB` of data on a [Raspberry Pi
