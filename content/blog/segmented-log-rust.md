@@ -1399,14 +1399,15 @@ cached at the same time. We could replace `LRUCache` with other kinds of cache
 like `LFUCache` for different performance characteristics. The `Index` files
 are still persisted on storage so there is no loss of data.
 
->One of the ambitions I had when starting out, was to enable this
->implementation to handle `1TB` of data on a [Raspberry Pi
->3B](https://www.raspberrypi.com/products/raspberry-pi-3-model-b/) which has
->only `1GB` of memory. If we enforce a limit that only `10` `Index` instances
->are cached at a time (e.g. set the `LRUCache` max capacity to `10`), that
->would be a `160MB` overhead. This would make it practical to run this
->implementation, albeit at the cost of some latency. I could just connect an
->external `1TB` hard disk for storage and be happy.
+>I wanted this implementation to handle `1TB` of data on a [Raspberry Pi
+>3B](https://www.raspberrypi.com/products/raspberry-pi-3-model-b/).
+>Unfortunately, it has only `1GB` RAM. However, if we enforce a limit that only
+>`10` `Index` instances are cached at a time (e.g. by setting the `LRUCache`
+>max capacity to `10`), that would be a `160MB` overhead. That would make this
+>implementation usable on an RPi 3B, albeit at the cost of some latency.
+>
+>For storage, I can connect a 1TB external hard disk to the RPi 3B and proceed
+>as usual.
 
 ...
 
