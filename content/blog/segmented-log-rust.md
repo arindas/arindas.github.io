@@ -232,10 +232,10 @@ Wait wait, don't leave yet! 😅 Let's take this a bit more seriously this time.
 Let's go back to the log. At the end of the day a log is sequential collection
 of elements. What's the simplest data structure we can use to implement this?
 
-An array. 
+An array.
 
 However, we need __persistence__. So let's use a file based abstraction
-instead. 
+instead.
 
 >We can quite literally map a file to a process's virtual memory
 >address space using the
@@ -293,7 +293,7 @@ Write behaviour:
     `read_segments`.
   - We create a new `segment` with it index range starting after the end of the
     previous _write segment_. This `segment` is assigned to `write_segment`
-  
+
 Read behaviour (for reading a record at particular index):
 - Locate the `segment` where the index falls within the `segment`'s index
   range. Look first in the `read_segments` vector, fall back to `write_segment`
@@ -484,7 +484,7 @@ compositional hierarchy, the share some similar _traits_:
 Let's formalize these notions:
 
 ```rust
-/// Collection providing asynchronous read access to an indexed set of records (or 
+/// Collection providing asynchronous read access to an indexed set of records (or
 /// values).
 #[async_trait(?Send)]
 pub trait AsyncIndexedRead {
@@ -527,10 +527,10 @@ pub trait AsyncIndexedRead {
         self.len() == num::zero()
     }
 
-    /// Normalizes the given index between `[0, len)` by subtracting 
+    /// Normalizes the given index between `[0, len)` by subtracting
     /// `lowest_index` from it.
     ///
-    /// Returns `Some(normalized_index)` if the index is within 
+    /// Returns `Some(normalized_index)` if the index is within
     /// bounds, `None` otherwise.
     fn normalize_index(&self, idx: &Self::Idx) -> Option<Self::Idx> {
         self.has_index(idx)
@@ -823,7 +823,7 @@ Now, let's try to append it:
 
 That's reasonable. We append if possible, and propagate the error. Continuing...
 
-```rust 
+```rust
 
 
         // ... inside Storage::append
@@ -880,7 +880,7 @@ We can coalesce the match blocks together by inilining all the results. Putting
 everything all together:
 
 ```rust
-/// Error to represent undexpect stream termination or overflow, i.e a stream 
+/// Error to represent undexpect stream termination or overflow, i.e a stream
 /// of unexpected length.
 #[derive(Debug)]
 pub struct StreamUnexpectedLength;
@@ -1034,8 +1034,8 @@ pub trait CommitLog<M, T>:
     + AsyncConsume<ConsumeError = Self::Error> // (5)
     + Sizable // Of course, we need to know the total storage size
 {
-    /// Associated error type for fallible operations 
-    type Error: std::error::Error; 
+    /// Associated error type for fallible operations
+    type Error: std::error::Error;
 
     // (3)
     async fn append<X, XBuf, XE>(&mut self, record: Record<M, X>) -> Result<Self::Idx, Self::Error>
@@ -1119,7 +1119,7 @@ index record will be at a position which is an integral multiple of `IRSZ`:
 >file (`Storage` impl).
 
 Due to this property, the index can be derived from the position of the record
-itself. The number of records is simply: 
+itself. The number of records is simply:
 
 ```
 len(Index) = size(Index) / IRSZ
@@ -1226,6 +1226,12 @@ Let's call it `PersistentSizedRecord`:
 ///
 /// REPR_SIZE is the number of bytes required to store the inner SizedRecord.
 struct PersistentSizedRecord<SR, const REPR_SIZE: usize>(SR);
+
+impl<SR, const REPR_SIZE: usize> PersistentSizedRecord<SR, REPR_SIZE> {
+    fn into_inner(self) -> SR {
+        self.0
+    }
+}
 
 impl<SR: SizedRecord, const REPR_SIZE: usize> PersistentSizedRecord<SR, REPR_SIZE> {
     async fn read_at<S>(source: &S, position: &S::Position) -> Result<Self, IndexError<S::Error>>
@@ -1409,6 +1415,294 @@ are still persisted on storage so there is no loss of data.
 >For storage, I can connect a 1TB external hard disk to the RPi 3B and proceed
 >as usual.
 
+Now, let's define some utilities for constructing `Index` instances.
+
+```rust
+impl<S, Idx> Index<S, Idx>
+where
+    S: Storage,
+    Idx: Unsigned + FromPrimitive + Copy + Eq,
+{
+
+    /// Estimates the numer of IndexRecord instances in the given Storage impl ref.
+    ///
+    /// Returns the number of IndexRecord instances estimated to be present.
+    pub fn estimated_index_records_len_in_storage(
+        storage: &S,
+    ) -> Result<usize, IndexError<S::Error>> {
+        let index_storage_size = storage // size of the given storage for Index
+            .size()
+            .to_usize()
+            .ok_or(IndexError::IncompatibleSizeType)?;
+
+        // len(Index) = (size(Index) - size(IndexBaseMarker)) / size(IndexRecord)
+        let estimated_index_records_len =
+            index_storage_size.saturating_sub(INDEX_BASE_MARKER_LENGTH) / INDEX_RECORD_LENGTH;
+
+        Ok(estimated_index_records_len)
+    }
+
+    /// Obtains the base_index by reading the IndexBaseMarker from the given storage.
+    ///
+    /// Returns the base index.
+    pub async fn base_index_from_storage(storage: &S) -> Result<Idx, IndexError<S::Error>> {
+        // read the index base marker from the base position (0)
+        let index_base_marker =
+            PersistentSizedRecord::<IndexBaseMarker, INDEX_BASE_MARKER_LENGTH>::read_at(
+                storage,
+                &u64_as_position!(INDEX_BASE_POSITION, S::Position)?,
+            )
+            .await
+            .map(|x| x.into_inner());
+
+        // map Result<IndexBaseMarker, ...> to Result<Idx, ...>
+        index_base_marker
+            .map(|x| x.base_index)
+            .and_then(|x| u64_as_idx!(x, Idx))
+    }
+
+    /// Reads the IndexRecord instances present in the given Storage impl ref.
+    ///
+    /// Returns a Vec of IndexRecord instances.
+    pub async fn index_records_from_storage(
+        storage: &S,
+    ) -> Result<Vec<IndexRecord>, IndexError<S::Error>> {
+        // start reading after the IndexBaseMarker
+        let mut position = INDEX_BASE_MARKER_LENGTH as u64;
+
+        // preallocate the vector for storing IndexRecord instances
+        let mut index_records = Vec::<IndexRecord>::with_capacity(
+            Self::estimated_index_records_len_in_storage(storage)?,
+        );
+
+        // while index records can be read without error
+        while let Ok(index_record) =
+            PersistentSizedRecord::<IndexRecord, INDEX_RECORD_LENGTH>::read_at(
+                storage,
+                &u64_as_position!(position, S::Position)?,
+            )
+            .await
+        {
+            // append the read index record to the vector of index records
+            index_records.push(index_record.into_inner());
+
+            // advance to the next position for reading an index record
+            position += INDEX_RECORD_LENGTH as u64;
+        }
+
+        index_records.shrink_to_fit(); // release empty space left, if any
+
+        let estimated_index_records_len = Self::estimated_index_records_len_in_storage(storage)?;
+
+        // cross verify the number of index records read
+        if index_records.len() != estimated_index_records_len {
+            Err(IndexError::InconsistentIndexSize)
+        } else {
+            Ok(index_records)
+        }
+    }
+
+    /// Cross validates the given base index against the one in the storage.
+    ///
+    /// Returns the validated base index.
+    pub async fn validated_base_index(
+        storage: &S,
+        base_index: Option<Idx>,
+    ) -> Result<Idx, IndexError<S::Error>> {
+        // read the base index from the given storage
+        let read_base_index = Self::base_index_from_storage(storage).await.ok();
+
+        match (read_base_index, base_index) {
+            // a. error out if neither in storage, nor provided
+            (None, None) => Err(IndexError::NoBaseIndexFound),
+
+            // b. either only in storage or only provided, choose what is present
+            (None, Some(base_index)) => Ok(base_index),
+            (Some(base_index), None) => Ok(base_index),
+
+            // c. present in both storage, as well as provided
+
+            // c.1. conflicting, error out
+            (Some(read), Some(provided)) if read != provided => Err(IndexError::BaseIndexMismatch),
+
+            // c.2. no conflict, choose provided (no difference)
+            (Some(_), Some(provided)) => Ok(provided),
+        }
+    }
+
+    // ...
+}
+
+```
+
+Next, we define our constructors for `Index`:
+
+```rust
+impl<S, Idx> Index<S, Idx>
+where
+    S: Storage,
+    Idx: Unsigned + FromPrimitive + Copy + Eq,
+{
+    // ...
+
+    /// Creates an Index instance from a `Storage` impl instance and an optional base index.
+    ///
+    /// Reads the IndexRecord instances present in the given storage and caches them.
+    ///
+    /// Returns an Index instance.
+    pub async fn with_storage_and_base_index_option(
+        storage: S,
+        base_index: Option<Idx>,
+    ) -> Result<Self, IndexError<S::Error>> {
+        // cross validates the given base index with the one present on storage.
+        let base_index = Self::validated_base_index(&storage, base_index).await?;
+
+        // reads the IndexRecord instances preent in the provided storage
+        let index_records = Self::index_records_from_storage(&storage).await?;
+
+        let len = index_records.len() as u64;
+
+        let next_index = base_index + u64_as_idx!(len, Idx)?;
+
+        Ok(Self {
+            index_records: Some(index_records),
+            base_index,
+            next_index,
+            storage,
+        })
+    }
+
+    pub async fn with_storage_and_base_index(
+        storage: S,
+        base_index: Idx,
+    ) -> Result<Self, IndexError<S::Error>> {
+        Self::with_storage_and_base_index_option(storage, Some(base_index)).await
+    }
+
+    pub async fn with_storage(storage: S) -> Result<Self, IndexError<S::Error>> {
+        Self::with_storage_and_base_index_option(storage, None).await
+    }
+
+
+    /// Creates an Index with the given storage, cached index records and a
+    /// validated base index.
+    ///
+    /// This function doesn't touch the provided Storage impl instance,
+    /// other than reading its size. The cached index record instances
+    /// are used as is. If no cache if provided, then the created Index
+    /// is not cached.
+    ///
+    /// This function is primarily useful when flushing an Index instance by
+    /// closing the underlying storage and re-opening it, without reading all
+    /// the IndexRecord instances again.
+    pub fn with_storage_index_records_option_and_validated_base_index(
+        storage: S,
+        index_records: Option<Vec<IndexRecord>>,
+        validated_base_index: Idx,
+    ) -> Result<Self, IndexError<S::Error>> {
+        let len = Self::estimated_index_records_len_in_storage(&storage)? as u64;
+        let next_index = validated_base_index + u64_as_idx!(len, Idx)?;
+
+        Ok(Self {
+            index_records,
+            base_index: validated_base_index,
+            next_index,
+            storage,
+        })
+    }
+
+    // ...
+}
+```
+
+Next, we define some functions for managing caching behaviour:
+
+```rust
+impl<S, Idx> Index<S, Idx>
+where
+    S: Storage,
+    Idx: Unsigned + FromPrimitive + Copy + Eq,
+{
+    // ...
+
+    /// Takes the cached index records from the Index, leaving it uncached.
+    pub fn take_cached_index_records(&mut self) -> Option<Vec<IndexRecord>> {
+        self.index_records.take()
+    }
+
+    pub fn cached_index_records(&self) -> Option<&Vec<IndexRecord>> {
+        self.index_records.as_ref()
+    }
+
+    /// Caches this Index if not already cached.
+    pub async fn cache(&mut self) -> Result<(), IndexError<S::Error>> {
+        if self.index_records.as_ref().is_some() {
+            return Ok(());
+        }
+
+        self.index_records = Some(Self::index_records_from_storage(&self.storage).await?);
+
+        Ok(())
+    }
+}
+
+```
+
+Some minor utilities for ease of implementation:
+
+```rust
+impl<S, Idx> Index<S, Idx>
+where
+    S: Default,
+    Idx: Copy,
+{
+    pub fn with_base_index(base_index: Idx) -> Self {
+        Self {
+            index_records: Some(Vec::new()),
+            base_index,
+            next_index: base_index,
+            storage: S::default(),
+        }
+    }
+}
+
+impl<S: Storage, Idx> Sizable for Index<S, Idx> {
+    type Size = S::Size;
+
+    fn size(&self) -> Self::Size {
+        self.storage.size()
+    }
+}
+
+impl<S: Storage, Idx> Index<S, Idx> {
+
+    /// Returns the position for the IndexRecord corresponding to the given
+    /// normalized_index on the underlying storage.
+    #[inline]
+    fn index_record_position(normalized_index: usize) -> Result<S::Position, IndexError<S::Error>> {
+        let position = (INDEX_BASE_MARKER_LENGTH + INDEX_RECORD_LENGTH * normalized_index) as u64;
+        u64_as_position!(position, S::Position)
+    }
+}
+
+impl<S, Idx> Index<S, Idx>
+where
+    S: Storage,
+    Idx: Unsigned + CheckedSub + ToPrimitive + Ord + Copy,
+{
+
+    /// Maps the given Idx to a usize in [0, len(Index))
+    #[inline]
+    fn internal_normalized_index(&self, idx: &Idx) -> Result<usize, IndexError<S::Error>> {
+        self.normalize_index(idx)
+            .ok_or(IndexError::IndexOutOfBounds)?
+            .to_usize()
+            .ok_or(IndexError::IncompatibleIdxType)
+    }
+}
+```
+
+Now, we move on to the primary responsiblities of our Index:
 ...
 
 ## Closing notes
