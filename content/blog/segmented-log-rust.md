@@ -1385,20 +1385,28 @@ Alright then, why make it optional?
 
 Recall that for `1TB` of data with `1KB` record size, we end up having `16GB`
 of `Index` overhead. It's clearly not practical allocating this amount of
-memory, since we expect our system to able to handle this scale. So we make it
-possible to only optionally cache this. We could choose only the most
-frequently accessed or likely to be accessed `Index` instances to cache the
-`IndexRecord` instances. (Maybe an `LRUCache` of `Index` instances to be
-cached, for starters.)
+memory, since we expect our system to able to handle this scale.
+
+So we make caching `IndexRecord` instances optional. This would enable us
+to decide which `Index` instances to cache based on access patterns.
+
+For instance, we could maintain an `LRUCache` of `Index` instances that are
+currently cached. When an `Index` outside of the `LRUCache` is accessed, we add
+it to the `LRUCache`. When an `Index` from within the `LRUCache` is accessed,
+we update the `LRUCache` accordingly.  The `LRUCache` will have some maximum
+capacity, which decides the maximum number of `Index` instances that can be
+cached at the same time. We could replace `LRUCache` with other kinds of cache
+like `LFUCache` for different performance characteristics. The `Index` files
+are still persisted on storage so there is no loss of data.
 
 >One of the ambitions I had when starting out, was to enable this
 >implementation to handle `1TB` of data on a [Raspberry Pi
 >3B](https://www.raspberrypi.com/products/raspberry-pi-3-model-b/) which has
 >only `1GB` of memory. If we enforce a limit that only `10` `Index` instances
->are cached at a time, that would be a `160MB` overhead. This would make it
->practical to run this implementation, albeit at the cost of some latency.
->
->The `Index` files are still persisted on storage so there is no loss of data.
+>are cached at a time (e.g. set the `LRUCache` max capacity to `10`), that
+>would be a `160MB` overhead. This would make it practical to run this
+>implementation, albeit at the cost of some latency. I could just connect an
+>external `1TB` hard disk for storage and be happy.
 
 ...
 
