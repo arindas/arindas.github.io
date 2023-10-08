@@ -1334,6 +1334,32 @@ pub const INDEX_RECORD_LENGTH: usize = 16;
 /// Lowest underlying storage position
 pub const INDEX_BASE_POSITION: u64 = 0;
 ```
+
+Before we proceed with our `Index` implementation, let us do a quick back of
+the handle estimate on how big `Index` files can be.
+
+Every `IndexRecord` is 16 bytes.
+So for every `Record` we have 16 bytes.
+Let's assume that `Record` sizes are `1KB` on average.
+Let's assume that `Segment` files are `1GB` on average.
+
+So we can calculate as follows:
+```
+        1GB segment file = pow(10, 6) KB = pow(10, 6) records
+
+         1 * 1KB record  = 1 * 16B IndexRecord
+pow(10, 6) * 1KB records = pow(10, 6) * 16B IndexRecord
+                         = 16MB
+
+Therefore,
+        1GB segment file => 16MB Index overhead
+
+e.g. 10 * 1GB segment files => 10 * 16MB Index files = 160 MB overhead
+
+     ITB total data through 1000 segmented files => 16GB overhead   
+```
+
+Keep this calculation in mind as we proceed through our implementation.
 ...
 
 ## Closing notes
