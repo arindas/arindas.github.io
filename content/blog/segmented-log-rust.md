@@ -1,7 +1,7 @@
 +++
 title = "Building Segmented Logs in Rust: From Theory to Production!"
 date = 2023-08-01
-description = "Explore a Rust implementation of the persistence mechanism behind message-queues and write-ahead-logs in databases. Embark on a journey from the original segmented log research paper to a production grade, fully tested and benchmarked implementation."
+description = "Explore a Rust implementation of the persistence mechanism behind message-queues and write-ahead-logs in databases. Embark on a journey from the theoretical underpinnings to a production grade implementation of the segmented-log data structure."
 draft = true
 
 [taxonomies]
@@ -359,6 +359,14 @@ calculated as the sum of current record offset and current record size.
 
 The code for this section is in this repository: <https://github.com/arindas/laminarmq/>
 More specifically, in the [storage module](https://github.com/arindas/laminarmq/tree/main/src/storage).
+
+While I would love to discuss _testing_, _benchmarking_ and _profiling_, this
+blog post is becoming quite lengthy. So, please look them up on the repository
+provided above.
+
+>Note: Some of the identifier names might be different on the repository. I
+>have refactored the code sections here to improve readability on various
+>devices. Also there are more comments here to make it easier to understand. 
 
 ### Implementation outline
 
@@ -993,6 +1001,236 @@ as a sentinel error type to represent the error case when the stream
 unexpectedly errors out while reading, or has more bytes in total than our
 `append_threshold`.
 
+##### <b>A sample</b> `Storage` <b>_impl_</b>.
+
+Let's explore a `tokio::fs::File` based implementation of `Storage`:
+
+First, let's outline our _struct_:
+
+```rust
+pub struct StdSeekReadFileStorage {
+    storage: RwLock<BufWriter<TokioFile>>,
+    backing_file_path: PathBuf,
+
+    size: u64,
+}
+```
+
+>`TokioFile` is an alias for `tokio::fs::File`. It's defined in a use directive
+>in the source.
+
+We need a buffered writer over our file to avoid hitting the file too many
+times for small writes. Since our workload will largely be composed of small
+writes and reads, this is important.
+
+The need for `RwLock` will be clear in a moment.
+
+Next, let's proceed with the constructor for this struct:
+
+```rust
+impl StdSeekReadFileStorage {
+    pub async fn new<P: AsRef<Path>>(path: P) -> Result<Self, StdSeekReadFileStorageError> {
+        let backing_file_path = path.as_ref().to_path_buf();
+
+        let storage = Self::obtain_backing_storage(&backing_file_path).await?;
+
+        let initial_size = storage
+            .metadata()
+            .await
+            .map_err(StdSeekReadFileStorageError::IoError)?
+            .len();
+
+        Ok(Self {
+            storage: RwLock::new(BufWriter::new(storage)),
+            backing_file_path,
+            size: initial_size,
+        })
+    }
+
+    async fn obtain_backing_storage<P: AsRef<Path>>(
+        path: P,
+    ) -> Result<TokioFile, StdSeekReadFileStorageError> {
+        OpenOptions::new()
+            .write(true)
+            .append(true)
+            .create(true)
+            .read(true)
+            .open(path)
+            .await
+            .map_err(StdSeekReadFileStorageError::IoError)
+    }
+}
+```
+
+As you can see, for the underlying storage file, we enable the following flags:
+- `write`: enables writing to the file
+- `append`: new writes are appended as opposed to truncating the file
+- `create`: if the file doesn't exist, it's created
+- `read`: enable reading from the file
+
+Now before we implement the `Storage` _trait_ for `StdSeekReadFileStorage`, we
+need to implement `Storage`'s inherited traits. Let's proceed one by one.
+
+First, we have `Sizable`:
+
+```rust
+impl Sizable for StdSeekReadFileStorage {
+    type Size = u64;
+
+    fn size(&self) -> Self::Size {
+        self.size
+    }
+}
+```
+
+Next, we implement `AsyncTruncate`:
+
+```rust
+#[async_trait(?Send)]
+impl AsyncTruncate for StdSeekReadFileStorage {
+    type Mark = u64;
+
+    type TruncError = StdSeekReadFileStorageError;
+
+    async fn truncate(&mut self, position: &Self::Mark) -> Result<(), Self::TruncError> {
+        // before truncating, flush all writes
+        self.storage
+            .write()
+            .await
+            .flush()
+            .await
+            .map_err(StdSeekReadFileStorageError::IoError)?;
+
+        // reopen file directly for truncation
+        let writer = Self::obtain_backing_storage(&self.backing_file_path).await?;
+
+        // truncate at the given position
+        writer
+            .set_len(*position)
+            .await
+            .map_err(StdSeekReadFileStorageError::IoError)?;
+
+        // close old file handle and assign thr new file handle to storage
+        self.storage = RwLock::new(BufWriter::new(writer));
+        self.size = *position; // update size after truncation
+
+        Ok(())
+    }
+}
+```
+
+We also need `AsyncConsume`:
+
+```rust
+#[async_trait(?Send)]
+impl AsyncConsume for StdSeekReadFileStorage {
+    type ConsumeError = StdSeekReadFileStorageError;
+
+    async fn remove(mut self) -> Result<(), Self::ConsumeError> {
+        let backing_file_path = self.backing_file_path.clone();
+
+        self.close().await?;
+
+        tokio::fs::remove_file(&backing_file_path)
+            .await
+            .map_err(StdSeekReadFileStorageError::IoError)
+    }
+
+    async fn close(mut self) -> Result<(), Self::ConsumeError> {
+        self.storage
+            .write()
+            .await
+            .flush()
+            .await
+            .map_err(StdSeekReadFileStorageError::IoError)
+    }
+}
+```
+
+With the pre-requisites ready, let's proceed with our `Storage` _impl_:
+
+```rust
+#[async_trait(?Send)]
+impl Storage for StdSeekReadFileStorage {
+    type Content = Vec<u8>;
+
+    type Position = u64;
+
+    type Error = StdSeekReadFileStorageError;
+
+    async fn append_slice(
+        &mut self,
+        slice: &[u8],
+    ) -> Result<(Self::Position, Self::Size), Self::Error> {
+        let current_position = self.size;
+
+        // write to storage using he BufWriter
+        self.storage
+            .write()
+            .await
+            .write_all(slice)
+            .await
+            .map_err(StdSeekReadFileStorageError::IoError)?;
+
+        let bytes_written = slice.len() as u64;
+
+        self.size += bytes_written; // update storage size
+
+        Ok((current_position, bytes_written))
+    }
+
+    async fn read(
+        &self,
+        position: &Self::Position,
+        size: &Self::Size,
+    ) -> Result<Self::Content, Self::Error> {
+        // validate that the position is within written area
+        if *position + *size > self.size {
+            return Err(StdSeekReadFileStorageError::ReadBeyondWrittenArea);
+        }
+
+        // preallocat buffer to use for reading
+        let mut read_buf = vec![0_u8; *size as usize];
+
+        // acquire &mut storage from behind &self using RwLock::write
+        let mut storage = self.storage.write().await;
+
+        // seek to read position
+        storage
+            .seek(io::SeekFrom::Start(*position))
+            .await
+            .map_err(StdSeekReadFileStorageError::IoError)?;
+
+        // read required number of bytes
+        storage
+            .read_exact(&mut read_buf)
+            .await
+            .map_err(StdSeekReadFileStorageError::IoError)?;
+
+        // seek to end of file using current size of file
+        storage
+            .seek(io::SeekFrom::Start(self.size))
+            .await
+            .map_err(StdSeekReadFileStorageError::IoError)?;
+
+        Ok(read_buf)
+    }
+}
+```
+
+Notice that the `Storage` trait uses a `&self` for `Storage::read`. This was to
+support idempotent operations.
+
+In our case, we need to update the seek position of the file, from behind a
+`&self`. So we need some interior mutability to achieve this. Hence the `RwLock`.
+
+Hopefully, the need for the `RwLock` is clear now. In retrospect, we could also
+have used a `Mutex` but using a `RwLock` keeps the option of multiple readers
+for read only operations open.
+
+Note that, the read operation is still idempotent as we restore the old file
+position after reading.
+
 #### `Record` (_struct_)
 Before we move on to the concept of a `CommitLog`, we need to abstract a much
 more fundamental aspect of our implementation. How do we represent the actual
@@ -1470,10 +1708,10 @@ where
         // start reading after the IndexBaseMarker
         let mut position = INDEX_BASE_MARKER_LENGTH as u64;
 
+        let estimated_index_records_len = Self::estimated_index_records_len_in_storage(storage)?;
+
         // preallocate the vector for storing IndexRecord instances
-        let mut index_records = Vec::<IndexRecord>::with_capacity(
-            Self::estimated_index_records_len_in_storage(storage)?,
-        );
+        let mut index_records = Vec::<IndexRecord>::with_capacity(estimated_index_records_len);
 
         // while index records can be read without error
         while let Ok(index_record) =
@@ -1483,16 +1721,14 @@ where
             )
             .await
         {
-            // append the read index record to the vector of index records
+            // append the IndexRecord read just now to the Vec<IndexRecord>
             index_records.push(index_record.into_inner());
 
-            // advance to the next position for reading an index record
+            // advance to the next position for reading an IndexRecord
             position += INDEX_RECORD_LENGTH as u64;
         }
 
         index_records.shrink_to_fit(); // release empty space left, if any
-
-        let estimated_index_records_len = Self::estimated_index_records_len_in_storage(storage)?;
 
         // cross verify the number of index records read
         if index_records.len() != estimated_index_records_len {
@@ -1750,6 +1986,103 @@ where
 }
 
 ```
+
+Next, we need a mechanism to append `IndexRecord` instances to our `Index`:
+
+```rust
+impl<S, Idx> Index<S, Idx>
+where
+    S: Storage,
+    Idx: Unsigned + ToPrimitive + Copy,
+{
+    pub async fn append(&mut self, index_record: IndexRecord) -> Result<Idx, IndexError<S::Error>> {
+        let write_index = self.next_index;
+
+        // If this Index is empty, we need to write the IndexBaseMarker first before
+        // writing any IndexRecord
+        if write_index == self.base_index {
+            PersistentSizedRecord::<IndexBaseMarker, INDEX_BASE_MARKER_LENGTH>(
+                IndexBaseMarker::new(idx_as_u64!(write_index, Idx)?),
+            )
+            .append_to(&mut self.storage)
+            .await?;
+        }
+
+        // Append the IndexRecord to storage
+        PersistentSizedRecord::<IndexRecord, INDEX_RECORD_LENGTH>(index_record)
+            .append_to(&mut self.storage)
+            .await?;
+
+        // If this Ineex is cached, also append the IndexRecord to the cache
+        if let Some(index_records) = self.index_records.as_mut() {
+            index_records.push(index_record);
+        }
+
+        self.next_index = write_index + Idx::one(); // update the next_index
+        Ok(write_index)
+    }
+}
+```
+
+We need to be able to truncate our `Index`:
+
+```rust
+#[async_trait::async_trait(?Send)]
+impl<S, Idx> AsyncTruncate for Index<S, Idx>
+where
+    S: Storage,
+    Idx: Unsigned + CheckedSub + ToPrimitive + Ord + Copy,
+{
+    type TruncError = IndexError<S::Error>;
+
+    type Mark = Idx;
+
+    /// Truncates this Index at the given Index. IndexRecord instances at 
+    /// indices >= idx are removed.
+    async fn truncate(&mut self, idx: &Self::Mark) -> Result<(), Self::TruncError> {
+        let normalized_index = self.internal_normalized_index(idx)?;
+
+        self.storage
+            .truncate(&Self::index_record_position(normalized_index)?)
+            .await
+            .map_err(IndexError::StorageError)?;
+
+        if let Some(index_records) = self.index_records.as_mut() {
+            index_records.truncate(normalized_index);
+        }
+
+        self.next_index = *idx;
+
+        Ok(())
+    }
+}
+```
+
+Finally, we define how to _close_ or _remove_ our `Index`:
+
+```rust
+#[async_trait::async_trait(?Send)]
+impl<S: Storage, Idx> AsyncConsume for Index<S, Idx> {
+    type ConsumeError = IndexError<S::Error>;
+
+    async fn remove(self) -> Result<(), Self::ConsumeError> {
+        self.storage
+            .remove()
+            .await
+            .map_err(IndexError::StorageError)
+    }
+
+    async fn close(self) -> Result<(), Self::ConsumeError> {
+        self.storage.close().await.map_err(IndexError::StorageError)
+    }
+}
+```
+
+Notice how all of the primary functions of our `Index` are supported by the
+_traits_ we wrote earlier.
+
+
+#### `Store` (_struct_)
 
 ...
 
