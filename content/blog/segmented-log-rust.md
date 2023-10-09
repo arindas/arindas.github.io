@@ -1702,7 +1702,55 @@ where
 }
 ```
 
-Now, we move on to the primary responsiblities of our Index:
+Now, we move on to the primary responsiblities of our Index.
+
+First, let's implement a mechanism to read `IndexRecord` instances from our `Index`:
+
+```rust
+#[async_trait::async_trait(?Send)]
+impl<S, Idx> AsyncIndexedRead for Index<S, Idx>
+where
+    S: Storage,
+    Idx: Unsigned + CheckedSub + ToPrimitive + Ord + Copy,
+{
+    type ReadError = IndexError<S::Error>;
+
+    type Idx = Idx;
+
+    /// The type of value to be read
+    type Value = IndexRecord;
+
+    fn highest_index(&self) -> Self::Idx {
+        self.next_index
+    }
+
+    fn lowest_index(&self) -> Self::Idx {
+        self.base_index
+    }
+
+    /// Reads the IndexRecord corresponding to the given idx.
+    async fn read(&self, idx: &Self::Idx) -> Result<Self::Value, Self::ReadError> {
+        let normalized_index = self.internal_normalized_index(idx)?;
+
+        // If this index is cached, read from the cached Vec of IndexRecord instances
+        if let Some(index_records) = self.index_records.as_ref() {
+            index_records
+                .get(normalized_index)
+                .ok_or(IndexError::IndexGapEncountered)
+                .map(|&x| x)
+        } else { // otherwise, read from the underlying storage
+            PersistentSizedRecord::<IndexRecord, INDEX_RECORD_LENGTH>::read_at(
+                &self.storage,
+                &Self::index_record_position(normalized_index)?,
+            )
+            .await
+            .map(|x| x.into_inner())
+        }
+    }
+}
+
+```
+
 ...
 
 ## Closing notes
