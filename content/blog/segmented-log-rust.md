@@ -366,7 +366,7 @@ provided above.
 
 >Note: Some of the identifier names might be different on the repository. I
 >have refactored the code sections here to improve readability on various
->devices. Also there are more comments here to make it easier to understand. 
+>devices. Also there are more comments here to make it easier to understand.
 
 ### Implementation outline
 
@@ -1064,7 +1064,8 @@ impl StdSeekReadFileStorage {
 
 As you can see, for the underlying storage file, we enable the following flags:
 - `write`: enables writing to the file
-- `append`: new writes are appended as opposed to truncating the file
+- `append`: new writes are appended (as opposed to truncating the file before
+  writes)
 - `create`: if the file doesn't exist, it's created
 - `read`: enable reading from the file
 
@@ -1184,12 +1185,12 @@ impl Storage for StdSeekReadFileStorage {
         position: &Self::Position,
         size: &Self::Size,
     ) -> Result<Self::Content, Self::Error> {
-        // validate that the position is within written area
+        // validate that the record to be read is within the written area
         if *position + *size > self.size {
             return Err(StdSeekReadFileStorageError::ReadBeyondWrittenArea);
         }
 
-        // preallocat buffer to use for reading
+        // pre-allocate buffer to use for reading
         let mut read_buf = vec![0_u8; *size as usize];
 
         // acquire &mut storage from behind &self using RwLock::write
@@ -1300,14 +1301,6 @@ pub trait CommitLog<M, T>:
 Optionally, a `CommitLog` implementation might need to remove some records that
 are older by a certain measure of time. Let's call them _expired_ records. So
 we provide a function for that in case different implementations need it.
-
----
-
-Using the `Record` struct and the different traits that we have described so
-far, we can implement any component of the `SegmentedLog`. These abstractions
-form the _basis_ of our implementation.
-
----
 
 #### `Index` (_struct_)
 Let's start with our first direct component of our indexed segmented log, the
@@ -2037,7 +2030,7 @@ where
 
     type Mark = Idx;
 
-    /// Truncates this Index at the given Index. IndexRecord instances at 
+    /// Truncates this Index at the given Index. IndexRecord instances at
     /// indices >= idx are removed.
     async fn truncate(&mut self, idx: &Self::Mark) -> Result<(), Self::TruncError> {
         let normalized_index = self.internal_normalized_index(idx)?;
@@ -2083,6 +2076,228 @@ _traits_ we wrote earlier.
 
 
 #### `Store` (_struct_)
+
+Now that we have our `Index` ready, we can get started with our backing
+`Store`. `Store` is responsible for persiting the record data to `Storage`.
+
+So remember that we have to validate the record bytes persisted using `Store`
+with the `checksum` and `length`? To make it easier to work with it, we create
+a virtual `RecordHeader`. This virtual `RecordHeader` is never actually
+persisted, but it is computed from the bytes to be written or bytes that are
+read from the storage.
+
+```rust
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct RecordHeader {
+    pub checksum: u64,
+    pub length: u64,
+}
+```
+
+>In a previous index-less segmented-log implementation, `RecordHeader`
+>instances used to be persisted right before every record on the `Store`. Once
+>we moved record `position`, `checksum` and `length` metadata to the `Index`,
+>it was no longer necessary to persist the `RecordHeader`.
+
+We only need a constructor for `RecordHeader`:
+
+```rust
+impl RecordHeader {
+    /// Computes the RecordHeader for the given serialized record bytes
+    ///
+    /// Returns a RecordHeader instance
+    pub fn compute<H>(record_bytes: &[u8]) -> Self
+    where
+        H: Hasher + Default,
+    {
+        // compute the hash of the given record bytes
+        let mut hasher = H::default();
+        hasher.write(record_bytes);
+        let checksum = hasher.finish();
+
+        RecordHeader {
+            checksum,
+            length: record_bytes.len() as u64,
+        }
+    }
+}
+```
+
+Now we can proceed with our `Store` implementation:
+
+```rust
+pub struct Store<S, H> {
+    storage: S, /// Underlying storage
+
+    /// Stores generic parameter used for Hasher impl.
+    _phantom_data: PhantomData<H>,
+}
+
+impl<S, H> Store<S, H>
+where
+    S: Storage,
+    H: Hasher + Default,
+{
+    /// Reads the bytes for the record persisted at the given position with
+    /// the provided RecordHeader.
+    ///
+    /// This method reads and verifies the bytes read with the given
+    /// RecordHeader by matching the checksum and length.
+    ///
+    /// Returns the bytes read for the record.
+    pub async fn read(
+        &self,
+        position: &S::Position,
+        record_header: &RecordHeader,
+    ) -> Result<S::Content, StoreError<S::Error>> {
+        // if this store is empty, error out
+        if self.size() == u64_as_size!(0_u64, S::Size)? {
+            return Err(StoreError::ReadOnEmptyStore);
+        }
+
+        // translate record_length usize to S::Size
+        let record_length = record_header.length;
+        let record_size = u64_as_size!(record_length, S::Size)?;
+
+        // read the record bytes
+        let record_bytes = self
+            .storage
+            .read(position, &record_size)
+            .await
+            .map_err(StoreError::StorageError)?;
+
+        // cross verify the checksum and length of the bytes read
+        if &RecordHeader::compute::<H>(&record_bytes) != record_header {
+            return Err(StoreError::RecordHeaderMismatch);
+        }
+
+        Ok(record_bytes)
+    }
+
+    /// Appends the serialized stream of bytes slices for a record to this Store.
+    ///
+    /// Returns the computed RecordHeader for the bytes written.
+    pub async fn append<XBuf, X, XE>(
+        &mut self,
+        stream: X,
+        append_threshold: Option<S::Size>,
+    ) -> Result<(S::Position, RecordHeader), StoreError<S::Error>>
+    where
+        XBuf: Deref<Target = [u8]>,
+        X: Stream<Item = Result<XBuf, XE>> + Unpin,
+    {
+        let mut hasher = H::default();
+
+        // compute a running checksum / hash
+        let mut stream = stream.map(|x| match x {
+            Ok(x) => {
+                hasher.write(&x);
+                Ok(x)
+            }
+            Err(e) => Err(e),
+        });
+
+        // append the byte slices to storage
+        let (position, bytes_written) = self
+            .storage
+            .append(&mut stream, append_threshold)
+            .await
+            .map_err(StoreError::StorageError)?;
+
+        // obtain the record header from the computed checksum and
+        // length from bytes written
+        let record_header = RecordHeader {
+            checksum: hasher.finish(),
+            length: size_as_u64!(bytes_written, S::Size)?,
+        };
+
+        Ok((position, record_header))
+    }
+}
+```
+
+We also need mechanism for constructing `IndexRecord` instances from
+`RecordHeader` instances once the record bytes are written to the store;
+
+```rust
+impl IndexRecord {
+    /// Creates an IndexRecord from a store position and RecordHeader,
+    /// presumably from a Store::append.
+    pub fn with_position_and_record_header<P: ToPrimitive>(
+        position: P,
+        record_header: RecordHeader,
+    ) -> Option<IndexRecord> {
+        Some(IndexRecord {
+            checksum: record_header.checksum,
+            length: u32::try_from(record_header.length).ok()?,
+            position: P::to_u32(&position)?,
+        })
+    }
+}
+```
+
+`Store` also has `AsyncTruncate`, `AsyncConsume` and `Sizable` _trait impls_,
+where it delegates the implementation to the underlying `Storage` _impl_.
+
+```rust
+#[async_trait(?Send)]
+impl<S: Storage, H> AsyncTruncate for Store<S, H> {
+    type Mark = S::Mark;
+
+    type TruncError = StoreError<S::Error>;
+
+    async fn truncate(&mut self, pos: &Self::Mark) -> Result<(), Self::TruncError> {
+        self.storage
+            .truncate(pos)
+            .await
+            .map_err(StoreError::StorageError)
+    }
+}
+
+#[async_trait(?Send)]
+impl<S: Storage, H> AsyncConsume for Store<S, H> {
+    type ConsumeError = StoreError<S::Error>;
+
+    async fn remove(self) -> Result<(), Self::ConsumeError> {
+        self.storage
+            .remove()
+            .await
+            .map_err(StoreError::StorageError)
+    }
+
+    async fn close(self) -> Result<(), Self::ConsumeError> {
+        self.storage.close().await.map_err(StoreError::StorageError)
+    }
+}
+
+impl<S: Storage, H> Sizable for Store<S, H> {
+    type Size = S::Size;
+
+    fn size(&self) -> Self::Size {
+        self.storage.size()
+    }
+}
+```
+
+Now that we have our `Store` and `Index` ready, we can move on to our `Segment`.
+
+#### `Segment` (_struct_)
+
+As we have discussed before, a `Segment` is the smallest unit in a
+`SegmentedLog` that can act as a `CommitLog`.
+
+In our implementation a `Segment` comprises of an `Index` and `Store`. Here's
+how it handles _reads_ and _appends_:
+- For _reads_, it first looks up the `IndexRecord` in `Index` corresponding to the
+  given record index. With the `position`, `length` and `checksum` present in
+  the `IndexRecord`, it reads the `Record` serialized bytes from the `Store`.
+  It then deserialize the bytes as necessary and returns the `Record` requested.
+- For _appends_, it first serializes the given `Record`. Next, it writes the
+  serialized bytes to the `Store`. Using the `RecordHeader` and position
+  obtained from `Store::append`, it creates the `IndexRecord` and appends it to
+  the `Index`
+
+Now that we know the needed behaviour, let's proceed with the implementation:
 
 ...
 
