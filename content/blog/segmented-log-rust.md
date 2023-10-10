@@ -1001,7 +1001,7 @@ as a sentinel error type to represent the error case when the stream
 unexpectedly errors out while reading, or has more bytes in total than our
 `append_threshold`.
 
-##### <b>A sample</b> `Storage` <b>_impl_</b>.
+##### A sample `Storage` _impl_.
 
 Let's explore a `tokio::fs::File` based implementation of `Storage`:
 
