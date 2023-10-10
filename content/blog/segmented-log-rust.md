@@ -1,11 +1,11 @@
 +++
 title = "Building Segmented Logs in Rust: From Theory to Production!"
-date = 2023-08-01
+date = 2023-10-10
 description = "Explore a Rust implementation of the persistence mechanism behind message-queues and write-ahead-logs in databases. Embark on a journey from the theoretical underpinnings to a production grade implementation of the segmented-log data structure."
 draft = true
 
 [taxonomies]
-tags = ["rust", "tokio", "glommio", "segmented-log", "message-queue", "distributed-systems"]
+tags = ["rust", "tokio", "segmented-log", "message-queue", "distributed-systems"]
 
 [extra]
 toc = true
