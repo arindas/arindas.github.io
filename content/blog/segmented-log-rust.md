@@ -2297,7 +2297,40 @@ how it handles _reads_ and _appends_:
   obtained from `Store::append`, it creates the `IndexRecord` and appends it to
   the `Index`
 
-Now that we know the needed behaviour, let's proceed with the implementation:
+Now that we know the needed behaviour, let's proceed with the implementation.
+
+First, we represent the configuration scheme for our `Segment`:
+
+```rust
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+pub struct Config<Size> {
+    pub max_store_size: Size,
+
+    /// Maximum number of bytes by which an append 
+    /// can exceeed the max_store_size limit
+    pub max_store_overflow: Size,
+
+    pub max_index_size: Size,
+}
+```
+
+When these limits are crossed, a segment is considered "maxed out" and has to
+be rotated back as a read segment.
+
+Next, we define our `Segment` _struct_:
+
+```rust
+pub struct Segment<S, M, H, Idx, Size, SERP> {
+    index: Index<S, Idx>,
+    store: Store<S, H>,
+
+    config: Config<Size>,
+
+    created_at: Instant,
+
+    _phantom_date: PhantomData<(M, SERP)>,
+}
+```
 
 ...
 
