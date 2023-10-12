@@ -2332,6 +2332,118 @@ pub struct Segment<S, M, H, Idx, Size, SERP> {
 }
 ```
 
+I will clarify the generic parameters in a while. However, let's first state
+this:
+
+We want to enable records stored in the segmented-log to contain their index in
+the metadata. In order to achieve this, we do this:
+
+```rust
+pub mod commit_log {
+
+    // ... original Record struct in commit_log module
+    pub type Record<M, T> {
+        metadata: M,
+        value: T
+    }
+
+    // ...
+
+    pub mod segmented_log {
+
+        /// Record metadata with index
+        #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+        pub struct MetaWithIdx<M, Idx> {
+            pub metadata: M,
+            pub index: Option<Idx>, // optional to allow automatic index value on append
+        }
+
+        /// Record with metadata containing the record index
+        pub type Record<M, Idx, T> = super::Record<MetaWithIdx<M, Idx>, T>;
+
+        pub mod segment {
+            pub struct Segment { /* ... */ }
+
+            // ...
+        }
+
+        pub mod index {
+            pub struct Index { /* ... */ }
+
+            // ...
+        }
+
+        pub mod store {
+            pub struct Store { /* ... */ }
+
+            // ...
+        }
+
+        // ...
+    }
+
+}
+```
+
+Here's what I want to highlight:
+- We create a _struct_ `MetaWithIdx` to use as the metadata value used for
+`commit_log::Record`. 
+- Next we create a _type alias_ `commit_log::segmented_log::Record` which uses
+the `MetaWithIdx` struct for metadata.
+
+Why am I saying all this? Well I did need to clarify the module structure a
+bit, but there's another reason.
+
+Let's go back to our `Segment` _struct_ and describe the different generic
+parameters:
+
+```rust
+
+pub struct Segment<S, M, H, Idx, Size, SERP> { /* ... */ }
+
+```
+
+- `S`: `Storage` _impl_ used for `Index` and `Store`
+- `M`: Metadata used as generic parameter to the `MetaWithIdx` _struct_ (this is
+  why I needed to explain how `MetaWithIdx` fits in first)
+- `H`: `Hasher` _impl_ used for computing checksums
+- `Idx`: Type to represent primitive used for for representing record indices (`u32`, `usize` etc.)
+- `Size`: Type to represent record sizes in bytes (`u64`, `usize` etc)
+- `SERP`: `SerializationProvider` _impl_ used for serializing metadata.
+
+So here's what the `SerializationProvider` trait looks like:
+
+```rust
+use std::ops::Deref;
+use serde::{Deserialize, Serialize};
+
+/// Trait to represent a serialization provider.
+pub trait SerializationProvider {
+    /// Serialized bytes container.
+    type SerializedBytes: Deref<Target = [u8]>;
+
+    /// Error type used by the fallible functions of this trait.
+    type Error: std::error::Error;
+
+    /// Serializes the given value.
+    fn serialize<T>(value: &T) -> Result<Self::SerializedBytes, Self::Error>
+    where
+        T: Serialize;
+
+    /// Returns the number of bytes used by the serialized representation of value.
+    fn serialized_size<T>(value: &T) -> Result<usize, Self::Error>
+    where
+        T: Serialize;
+
+    /// Deserializes the given serialized bytes into a T instance.
+    fn deserialize<'a, T>(bytes: &'a [u8]) -> Result<T, Self::Error>
+    where
+        T: Deserialize<'a>;
+}
+```
+
+It is a way to generalize over different `serde` serialization data formats.
+
 ...
 
 ## Closing notes
