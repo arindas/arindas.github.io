@@ -2358,6 +2358,27 @@ pub mod commit_log {
             pub index: Option<Idx>, // optional to allow automatic index value on append
         }
 
+        impl<M, Idx> MetaWithIdx<M, Idx>
+        where
+            Idx: Eq,
+        {
+            /// Anchores the given MetaWithIdx at the given anchor_idx.
+            ///
+            /// Returns Some(self) if the contained index is same as
+            /// the given anchor_idx, None otherwise.
+            pub fn anchored_with_index(self, anchor_idx: Idx) -> Option<Self> {
+                let index = match self.index {
+                    Some(idx) if idx != anchor_idx => None,
+                    _ => Some(anchor_idx),
+                }?;
+
+                Some(Self {
+                    index: Some(index),
+                    ..self
+                })
+            }
+        }
+
         /// Record with metadata containing the record index
         pub type Record<M, Idx, T> = super::Record<MetaWithIdx<M, Idx>, T>;
 
@@ -2442,7 +2463,189 @@ pub trait SerializationProvider {
 }
 ```
 
-It is a way to generalize over different `serde` serialization data formats.
+It's used to generalize over different `serde` data formats.
+
+Now, we need a basic constructor for `Segment`:
+
+```rust
+impl<S, M, H, Idx, SERP> Segment<S, M, H, Idx, S::Size, SERP>
+where
+    S: Storage,
+{
+    pub fn new(index: Index<S, Idx>, store: Store<S, H>, config: Config<S::Size>) -> Self {
+        Self {
+            index,
+            store,
+            config,
+            created_at: Instant::now(),
+            _phantom_date: PhantomData,
+        }
+    }
+
+    // ...
+}
+```
+
+Next, we express the conditions for when a segment is _expired_ or _maxed out_.
+
+```rust
+impl<S, M, H, Idx, SERP> Segment<S, M, H, Idx, S::Size, SERP>
+where
+    S: Storage,
+{
+    // ...
+
+    pub fn is_maxed(&self) -> bool {
+        self.store.size() >= self.config.max_store_size
+            || self.index.size() >= self.config.max_index_size
+    }
+
+    pub fn has_expired(&self, expiry_duration: Duration) -> bool {
+        self.created_at.elapsed() >= expiry_duration
+    }
+}
+```
+
+Before, we proceed with storing records in our segment, we need to formalize
+the byte layout for serialized records:
+
+```
+// byte layout for serialzed record
+┌───────────────────────────┬──────────────────────────────┬───────────────────────────────────────────────┐
+│ metadata_len: u32 [u8; 4] │ metadata: [u8; metadata_len] │ value: [u8; record_length - metadata_len - 4] │
+└───────────────────────────┴──────────────────────────────┴───────────────────────────────────────────────┘
+├────────────────────────────────────────── [u8; record_length] ───────────────────────────────────────────┤
+```
+
+As you can see, serialized record has the following parts:
+1. `metadata_len`: The number of bytes required to represent serialized
+   `metadata`. Stored as `u32` in `4` bytes.
+2. `metadata`: The metadata associated with the record. Stored in
+   `metadata_len` bytes.
+3. `value`: The value contained in the record. Stored in
+   `record_length - metadata_len - 4` bytes.
+
+With, our byte layout ready, let's proceed with our `Segment::append` implementation:
+
+```rust
+impl<S, M, H, Idx, SERP> Segment<S, M, H, Idx, S::Size, SERP>
+where
+    S: Storage,
+    M: Serialize,
+    H: Hasher + Default,
+    Idx: Unsigned + CheckedSub + ToPrimitive + Ord + Copy,
+    Idx: Serialize,
+    SERP: SerializationProvider,
+{
+    /// Appends the given serialized Record bytes to the end of this Segment.
+    ///
+    /// This method first appends the serialized record to the underlying
+    /// Store. Next, using the position and RecordHeader returned from
+    /// Store::append, it creates the IndexRecord. Finally, it appends the
+    /// IndexRecord to the Index.
+    ///
+    /// Returns the index Idx at which the serialized record was written.
+    async fn append_serialized_record<XBuf, X, XE>(
+        &mut self,
+        stream: X,
+    ) -> Result<Idx, SegmentOpError<S, SERP>>
+    where
+        XBuf: Deref<Target = [u8]>,
+        X: Stream<Item = Result<XBuf, XE>> + Unpin,
+    {
+        let write_index = self.index.highest_index();
+
+        let remaining_store_capacity = self.config.max_store_size - self.store.size();
+
+        let append_threshold = remaining_store_capacity + self.config.max_store_overflow;
+
+        let (position, record_header) = self
+            .store
+            .append(stream, Some(append_threshold))
+            .await
+            .map_err(SegmentError::StoreError)?;
+
+        let index_record = IndexRecord::with_position_and_record_header(position, record_header)
+            .ok_or(SegmentError::InvalidIndexRecordGenerated)?;
+
+        self.index
+            .append(index_record)
+            .await
+            .map_err(SegmentError::IndexError)?;
+
+        Ok(write_index)
+    }
+
+    /// Appends the given Record at the end of this Segment.
+    ///
+    /// Returns the index at which the Record was written.
+    pub async fn append<XBuf, X, XE>(
+        &mut self,
+        record: Record<M, Idx, X>,
+    ) -> Result<Idx, SegmentOpError<S, SERP>>
+    where
+        XBuf: Deref<Target = [u8]>,
+        X: Stream<Item = Result<XBuf, XE>> + Unpin,
+    {
+        if self.is_maxed() {
+            return Err(SegmentError::SegmentMaxed);
+        }
+
+        // validates the append index in record metadata
+        let metadata = record
+            .metadata
+            .anchored_with_index(self.index.highest_index())
+            .ok_or(SegmentOpError::<S, SERP>::InvalidAppendIdx)?;
+
+        let metadata_bytes =
+            SERP::serialize(&metadata).map_err(SegmentError::SerializationError)?;
+
+        let metadata_bytes_len: u32 = metadata_bytes
+            .len()
+            .try_into()
+            .map_err(|_| SegmentError::UsizeU32Inconvertible)?;
+
+        let metadata_bytes_len_bytes =
+            SERP::serialize(&metadata_bytes_len).map_err(SegmentError::SerializationError)?;
+
+        // sum type over two types of slices (value slice and metadata slice)
+        enum SBuf<XBuf, YBuf> {
+            XBuf(XBuf),
+            YBuf(YBuf),
+        }
+
+        impl<XBuf, YBuf> Deref for SBuf<XBuf, YBuf>
+        where
+            XBuf: Deref<Target = [u8]>,
+            YBuf: Deref<Target = [u8]>,
+        {
+            type Target = [u8];
+
+            fn deref(&self) -> &Self::Target {
+                match &self {
+                    SBuf::XBuf(x_buf) => x_buf.deref(),
+                    SBuf::YBuf(y_buf) => y_buf.deref(),
+                }
+            }
+        }
+
+        // start the stream with metadata
+        let stream = futures_lite::stream::iter([
+            Ok(SBuf::YBuf(metadata_bytes_len_bytes)),
+            Ok(SBuf::YBuf(metadata_bytes)),
+        ]);
+
+        // chain the value to the end of the stream
+        let stream = stream.chain(
+            record
+                .value
+                .map(|x_buf| x_buf.map(|x_buf| SBuf::XBuf(x_buf))),
+        );
+
+        self.append_serialized_record(stream).await
+    }
+}
+```
 
 ...
 
