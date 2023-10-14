@@ -2293,7 +2293,7 @@ how it handles _reads_ and _appends_:
   the `IndexRecord`, it reads the `Record` serialized bytes from the `Store`.
   It then deserialize the bytes as necessary and returns the `Record` requested.
 - For _appends_, it first serializes the given `Record`. Next, it writes the
-  serialized bytes to the `Store`. Using the `RecordHeader` and position
+  serialized bytes to the `Store`. Using the `RecordHeader` and `position`
   obtained from `Store::append`, it creates the `IndexRecord` and appends it to
   the `Index`
 
@@ -2306,7 +2306,7 @@ First, we represent the configuration scheme for our `Segment`:
 pub struct Config<Size> {
     pub max_store_size: Size,
 
-    /// Maximum number of bytes by which an append 
+    /// Maximum number of bytes by which an append
     /// can exceeed the max_store_size limit
     pub max_store_overflow: Size,
 
@@ -2332,11 +2332,14 @@ pub struct Segment<S, M, H, Idx, Size, SERP> {
 }
 ```
 
-I will clarify the generic parameters in a while. However, let's first state
-this:
+I will clarify the generic parameters in a while. However, we have an
+additional requirement:
 
-We want to enable records stored in the segmented-log to contain their index in
-the metadata. In order to achieve this, we do this:
+_We want to enable records stored in the segmented-log, to contain the record
+index in the metadata._
+
+In order to achieve this, we create a new struct `MetaWithIdx` and use it as
+follows:
 
 ```rust
 pub mod commit_log {
@@ -2408,7 +2411,7 @@ pub mod commit_log {
 
 Here's what I want to highlight:
 - We create a _struct_ `MetaWithIdx` to use as the metadata value used for
-`commit_log::Record`. 
+`commit_log::Record`.
 - Next we create a _type alias_ `commit_log::segmented_log::Record` which uses
 the `MetaWithIdx` struct for metadata.
 
@@ -2646,6 +2649,85 @@ where
     }
 }
 ```
+
+Next, we implement the `AsyncIndexedRead` _trait_ for `Segment` using the same
+byte layout:
+
+```rust
+#[async_trait(?Send)]
+impl<S, M, H, Idx, SERP> AsyncIndexedRead for Segment<S, M, H, Idx, S::Size, SERP>
+where
+    S: Storage,
+    S::Content: SplitAt<u8>, // enables S::Content, a byte slice, to be split
+    SERP: SerializationProvider,
+    H: Hasher + Default,
+    Idx: Unsigned + CheckedSub + ToPrimitive + Ord + Copy,
+    Idx: Serialize + DeserializeOwned,
+    M: Serialize + DeserializeOwned,
+{
+    type ReadError = SegmentOpError<S, SERP>;
+
+    type Idx = Idx;
+
+    type Value = Record<M, Idx, S::Content>;
+
+    fn highest_index(&self) -> Self::Idx {
+        self.index.highest_index()
+    }
+
+    fn lowest_index(&self) -> Self::Idx {
+        self.index.lowest_index()
+    }
+
+    async fn read(&self, idx: &Self::Idx) -> Result<Self::Value, Self::ReadError> {
+        // obtain the IndexRecord from the Index using the given Record index
+        let index_record = self
+            .index
+            .read(idx)
+            .await
+            .map_err(SegmentError::IndexError)?;
+
+        let position = S::Position::from_u64(index_record.position as u64)
+            .ok_or(SegmentError::IncompatiblePositionType)?;
+
+        // read the record bytes from the store uwing the IndexRecord
+        let record_content = self
+            .store
+            .read(&position, &index_record.into())
+            .await
+            .map_err(SegmentError::StoreError)?;
+
+        let metadata_bytes_len_bytes_len =
+            SERP::serialized_size(&0_u32).map_err(SegmentError::SerializationError)?;
+
+        // split out the bytes representing metadata_bytes_len from the record bytes
+        let (metadata_bytes_len_bytes, metadata_with_value) = record_content
+            .split_at(metadata_bytes_len_bytes_len)
+            .ok_or(SegmentError::RecordMetadataNotFound)?;
+
+        let metadata_bytes_len: u32 = SERP::deserialize(&metadata_bytes_len_bytes)
+            .map_err(SegmentError::SerializationError)?;
+
+        let metadata_bytes_len: usize = metadata_bytes_len
+            .try_into()
+            .map_err(|_| SegmentError::UsizeU32Inconvertible)?;
+
+        // split out the metadata_bytes from the remainnder of record bytes
+        // using metadata_bytes_len. The remaining bytes is the value.
+        let (metadata_bytes, value) = metadata_with_value
+            .split_at(metadata_bytes_len)
+            .ok_or(SegmentError::RecordMetadataNotFound)?;
+
+        let metadata =
+            SERP::deserialize(&metadata_bytes).map_err(SegmentError::SerializationError)?;
+
+        Ok(Record { metadata, value })
+    }
+}
+```
+
+`Segment::append` and the `AsyncIndexedRead` _trait impl_ form the majority of
+the responsiblities of a `Segment`.
 
 ...
 
