@@ -2712,8 +2712,8 @@ where
             .try_into()
             .map_err(|_| SegmentError::UsizeU32Inconvertible)?;
 
-        // split out the metadata_bytes from the remainnder of record bytes
-        // using metadata_bytes_len. The remaining bytes is the value.
+        // split out the metadata_bytes from the remainder of record bytes using
+        // metadata_bytes_len. The remaining bytes represent the value.
         let (metadata_bytes, value) = metadata_with_value
             .split_at(metadata_bytes_len)
             .ok_or(SegmentError::RecordMetadataNotFound)?;
