@@ -2712,7 +2712,7 @@ where
             .try_into()
             .map_err(|_| SegmentError::UsizeU32Inconvertible)?;
 
-        // split out the metadata_bytes from the remainder of record bytes using
+        // Split out the metadata_bytes from the remainder of record bytes using
         // metadata_bytes_len. The remaining bytes represent the value.
         let (metadata_bytes, value) = metadata_with_value
             .split_at(metadata_bytes_len)
@@ -2726,9 +2726,32 @@ where
 }
 ```
 
-`Segment::append` and the `AsyncIndexedRead` _trait impl_ form the majority of
-the responsiblities of a `Segment`.
+>`Segment::append` and the `AsyncIndexedRead` _trait impl_ form the majority of
+>the responsiblities of a `Segment`.
 
+Next, we need to provide an API for managing `Index` caching on `Segment`
+instances:
+
+```rust
+impl<S, M, H, Idx, SERP> Segment<S, M, H, Idx, S::Size, SERP>
+where
+    S: Storage,
+    SERP: SerializationProvider,
+    Idx: Unsigned + FromPrimitive + Copy + Eq,
+{
+    pub async fn cache_index(&mut self) -> Result<(), SegmentError<S::Error, SERP::Error>> {
+        self.index.cache().await.map_err(SegmentError::IndexError)
+    }
+
+    pub fn take_cached_index_records(&mut self) -> Option<Vec<IndexRecord>> {
+        self.index.take_cached_index_records()
+    }
+
+    pub fn cached_index_records(&self) -> Option<&Vec<IndexRecord>> {
+        self.index.cached_index_records()
+    }
+}
+```
 ...
 
 ## Closing notes
