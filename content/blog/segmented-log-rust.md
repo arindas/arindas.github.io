@@ -227,8 +227,6 @@ _segmented_ across the different sheets of paper.
 Call the individual sheets of paper _segments_. The collection of sheets can
 now be called a _segmented log_.
 
-Wait wait, don't leave yet! 😅 Let's take this a bit more seriously this time.
-
 Let's go back to the log. At the end of the day a log is sequential collection
 of elements. What's the simplest data structure we can use to implement this?
 
@@ -2650,6 +2648,36 @@ where
 }
 ```
 
+That looks more involved than it actually is. Still, let's go through it once:
+
+- `append()`
+    - Validate the append index, and obtain it if not provided.
+    - Serialize the metadata, specifically the `MetaWithIdx` instance in the
+      `Record`
+    - Find the length of the serialized `metadata_bytes` as
+      `metadata_bytes_len`
+    - Serialze the `metadata_bytes_len` to `metadata_bytes_len_bytes`
+    - Create a sum type to generalize over serialized byte slices and record
+      value byte slices
+    - Chain the byte slices in a stream in the order
+      `[metadata_bytes_len_bytes, metadata_bytes, ...record.value]`
+    - Call `append_serialized_record()` on the final chained stream of slices
+
+- `append_serialized_record()`
+    - Copy current `highest_index` to `write_index`
+    - Obtain the `remaining_store_capacity` using the expression
+      `config.max_store_size - store.size()`
+    - `append_threshold` is then the remaining capacity along with overflow
+      bytes allowed, i.e. `remaining_store_capacity +
+      config.max_store_overflow` 
+    - Append the serialized stream of slices to the underlying `Store` instance
+      with the computed `append_threshold`
+    - Using the `(position, index_record)` obtained from `store.append()`, we
+      create the `IndexRecord`
+    - Append the `IndexRecord` to the underlying `Index` instance.
+    - Return the `index` at which the serialized record was written, (return
+      `write_index`)
+
 Next, we implement the `AsyncIndexedRead` _trait_ for `Segment` using the same
 byte layout:
 
@@ -2725,6 +2753,15 @@ where
     }
 }
 ```
+
+Again, let's summarize, what's happening above:
+- Read the `IndexRecord` at the given index `idx` from the underlying `Index`
+  instance
+- Read the serialized record bytes using the `IndexRecord` from the underlying
+  `Store` instance.
+- Split and deserialize the serialized record bytes to `metadata_bytes_len`,
+  `metadata` and record `value`
+- Returns a `Record` instance containing the read `metadata` and `value`.
 
 >`Segment::append` and the `AsyncIndexedRead` _trait impl_ form the majority of
 >the responsiblities of a `Segment`.
