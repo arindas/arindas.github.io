@@ -2669,7 +2669,7 @@ That looks more involved than it actually is. Still, let's go through it once:
       `config.max_store_size - store.size()`
     - `append_threshold` is then the remaining capacity along with overflow
       bytes allowed, i.e. `remaining_store_capacity +
-      config.max_store_overflow` 
+      config.max_store_overflow`
     - Append the serialized stream of slices to the underlying `Store` instance
       with the computed `append_threshold`
     - Using the `(position, index_record)` obtained from `store.append()`, we
@@ -2789,6 +2789,47 @@ where
     }
 }
 ```
+
+As you can see, it simply exposes the caching api of the underlying `Index`.
+
+When constructing our `Segment`, most of the times we will need to read
+the `Segment` with a given `base_index` from some storage media.
+Ideally we want a mechanism that allows us to:
+- Find the base indices of all the segments stored in some storage media
+- Given a `base_index`, get the `Storage` _trait_ impl. instances associated
+  with the `Segment` having that `base_index`
+
+Now a `Segment` contains an `Index` and `Store`. Each have distinct underlying
+`Storage` trait impl. instances associated with them. However, they are still
+part of the same unit.
+
+Let's create a _struct_ `SegmentStorage` to express ths notion:
+
+```rust
+pub struct SegmentStorage<S> {
+    pub store: S, /// Storage associated with the store
+    pub index: S, /// Storage associated with the index
+}
+```
+
+Now, let's express our notion of the storage media:
+
+```rust
+/// Provides SegmentStorage for the Segment having the given base_index
+#[async_trait(?Send)]
+pub trait SegmentStorageProvider<S, Idx>
+where
+    S: Storage,
+{
+    /// Obtains the base indices of the segments stored.
+    ///
+    /// Returns a Vec of Idx base indices.
+    async fn obtain_base_indices_of_stored_segments(&mut self) -> Result<Vec<Idx>, S::Error>;
+
+    async fn obtain(&mut self, idx: &Idx) -> Result<SegmentStorage<S>, S::Error>;
+}
+```
+
 ...
 
 ## Closing notes
