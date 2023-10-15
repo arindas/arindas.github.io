@@ -2523,7 +2523,7 @@ As you can see, serialized record has the following parts:
    `metadata`. Stored as `u32` in `4` bytes.
 2. `metadata`: The metadata associated with the record. Stored in
    `metadata_len` bytes.
-3. `value`: The value contained in the record. Stored in
+3. `value`: The value contained in the record. Stored in the remaining
    `record_length - metadata_len - 4` bytes.
 
 With, our byte layout ready, let's proceed with our `Segment::append` implementation:
@@ -2799,9 +2799,9 @@ Ideally we want a mechanism that allows us to:
 - Given a `base_index`, get the `Storage` _trait_ impl. instances associated
   with the `Segment` having that `base_index`
 
-Now a `Segment` contains an `Index` and `Store`. Each have distinct underlying
-`Storage` trait impl. instances associated with them. However, they are still
-part of the same unit.
+Now a `Segment` contains an `Index` and `Store`. Each of them have distinct
+underlying `Storage` trait impl. instances associated with them. However, they
+are still part of the same unit.
 
 Let's create a _struct_ `SegmentStorage` to express ths notion:
 
@@ -2812,10 +2812,11 @@ pub struct SegmentStorage<S> {
 }
 ```
 
-Now, let's express our notion of the storage media:
+Now, let's express our notion of the storage media that provides
+`SegmentStorage` instances:
 
 ```rust
-/// Provides SegmentStorage for the Segment having the given base_index
+/// Provides SegmentStorage for the Segment with the given base_index from some storage media.
 #[async_trait(?Send)]
 pub trait SegmentStorageProvider<S, Idx>
 where
@@ -2826,9 +2827,204 @@ where
     /// Returns a Vec of Idx base indices.
     async fn obtain_base_indices_of_stored_segments(&mut self) -> Result<Vec<Idx>, S::Error>;
 
+    /// Obtains the SegmentStorage for the Segment with the given idx as their base_index.
     async fn obtain(&mut self, idx: &Idx) -> Result<SegmentStorage<S>, S::Error>;
 }
 ```
+
+We rely on the `SegmentStorageProvider` for allocating files or other storage
+units for our `Segment` instances. The receivers are `&mut` since the
+operations presented here might need to manipulate the underlying storage
+media.
+
+With `SegmentStorageProvider`, we can completely decouple storage media from
+our `Segment`, and by extension, our `SegmentedLog` implementation.
+
+Now let's go back to our `Segment`. Let's create a `Segment` constructor that
+uses the `SegmentStorageProvider`:
+
+```rust
+impl<S, M, H, Idx, SERP> Segment<S, M, H, Idx, S::Size, SERP>
+where
+    S: Storage,
+    H: Default,
+    Idx: Unsigned + FromPrimitive + Copy + Eq,
+    SERP: SerializationProvider,
+{
+    /// Creates a Segment given a SegmentStorageProvider &mut ref, segment
+    /// Config, base_index and a flag cache_index_records which decides
+    /// whether to cache the Segment index at initialization.
+    ///
+    /// This function uses the SegmentStorageProvider ref to obtain the
+    /// SegmentStorage associated with the Segment having the given 
+    /// base_index. Next, it creates the Segment using the obtained
+    /// SegmentStorage and base_index.
+    ///
+    /// The cache_index_records flag decides whether to read all the
+    /// IndexRecord instances stored in at the associated Index at 
+    /// the start. It behaves as follows:
+    /// - true: Read all the IndexRecord instances into the cached vector 
+    /// of IndexRecord instances in the Index
+    /// - false: No IndexRecord instances are read at this moment and the 
+    /// Index is not cached. The Index can later be cached with the 
+    /// Segment's index caching API.
+    ///
+    /// Returns the created Segment instance.
+    pub async fn with_segment_storage_provider_config_base_index_and_cache_index_records<SSP>(
+        segment_storage_provider: &mut SSP,
+        config: Config<S::Size>,
+        base_index: Idx,
+        cache_index_records: bool,
+    ) -> Result<Self, SegmentError<S::Error, SERP::Error>>
+    where
+        SSP: SegmentStorageProvider<S, Idx>,
+    {
+        let segment_storage = segment_storage_provider
+            .obtain(&base_index)
+            .await
+            .map_err(SegmentError::StorageError)?;
+
+        let index = if cache_index_records {
+            Index::with_storage_and_base_index(segment_storage.index, base_index).await
+        } else {
+            Index::with_storage_index_records_option_and_validated_base_index(
+                segment_storage.index,
+                None,
+                base_index,
+            )
+        }
+        .map_err(SegmentError::IndexError)?;
+
+        let store = Store::<S, H>::new(segment_storage.store);
+
+        Ok(Self::new(index, store, config))
+    }
+}
+```
+Next, we utilize the `SegmentStorageProvider` to provide an API to flush data
+written in a `Segment` to the underlying storage media. The main idea behind
+flushing is to close and reopen the underlying storage handles. This method is
+generally a consistent method of flushing data across different storage
+platforms. We implement this as follows:
+
+```rust
+impl<S, M, H, Idx, SERP> Segment<S, M, H, Idx, S::Size, SERP>
+where
+    S: Storage,
+    H: Default,
+    Idx: Unsigned + FromPrimitive + Copy + Eq,
+    SERP: SerializationProvider,
+{
+    /// Flushes this Segment with the given SegmentStorageProvider.
+    ///
+    /// Consumes self and returns a flushed Segment.
+    pub async fn flush<SSP>(
+        mut self,
+        segment_storage_provider: &mut SSP,
+    ) -> Result<Self, SegmentError<S::Error, SERP::Error>>
+    where
+        SSP: SegmentStorageProvider<S, Idx>,
+    {
+        // back up the Index base_index and the cached_index_records
+        let base_index = *self.index.base_index();
+        let cached_index_records = self.index.take_cached_index_records();
+
+        // close underlying storage handles; this flushes data
+        self.index.close().await.map_err(SegmentError::IndexError)?;
+        self.store.close().await.map_err(SegmentError::StoreError)?;
+
+        // re-open and obtain storage handles for index and store
+        let segment_storage = segment_storage_provider
+            .obtain(&base_index)
+            .await
+            .map_err(SegmentError::StorageError)?;
+
+        // reuse the previously backed up cached_index_records when
+        // creating the Index from the re-opened storage handle
+        self.index = Index::with_storage_index_records_option_and_validated_base_index(
+            segment_storage.index,
+            cached_index_records,
+            base_index,
+        )
+        .map_err(SegmentError::IndexError)?;
+
+        // create the store
+        self.store = Store::<S, H>::new(segment_storage.store);
+
+        // return the "flushed" segment
+        Ok(self)
+    }
+}
+```
+Finally, we implement `AsyncTruncate` and `AsyncConsume` for our `Segment`:
+
+```rust
+#[async_trait(?Send)]
+impl<S, M, H, Idx, SERP> AsyncTruncate for Segment<S, M, H, Idx, S::Size, SERP>
+where
+    S: Storage,
+    Idx: Unsigned + CheckedSub + ToPrimitive + Ord + Copy,
+    SERP: SerializationProvider,
+{
+    type Mark = Idx;
+
+    type TruncError = SegmentError<S::Error, SERP::Error>;
+
+    async fn truncate(&mut self, mark: &Self::Mark) -> Result<(), Self::TruncError> {
+        let index_record = self
+            .index
+            .read(mark)
+            .await
+            .map_err(SegmentError::IndexError)?;
+
+        let position = S::Position::from_u64(index_record.position as u64)
+            .ok_or(SegmentError::IncompatiblePositionType)?;
+
+        self.store
+            .truncate(&position)
+            .await
+            .map_err(SegmentError::StoreError)?;
+
+        self.index
+            .truncate(mark)
+            .await
+            .map_err(SegmentError::IndexError)?;
+
+        Ok(())
+    }
+}
+
+#[async_trait(?Send)]
+impl<S, M, H, Idx, SERP> AsyncConsume for Segment<S, M, H, Idx, S::Size, SERP>
+where
+    S: Storage,
+    SERP: SerializationProvider,
+{
+    type ConsumeError = SegmentError<S::Error, SERP::Error>;
+
+    async fn remove(self) -> Result<(), Self::ConsumeError> {
+        self.store
+            .remove()
+            .await
+            .map_err(SegmentError::StoreError)?;
+
+        self.index
+            .remove()
+            .await
+            .map_err(SegmentError::IndexError)?;
+
+        Ok(())
+    }
+
+    async fn close(self) -> Result<(), Self::ConsumeError> {
+        self.store.close().await.map_err(SegmentError::StoreError)?;
+        self.index.close().await.map_err(SegmentError::IndexError)?;
+        Ok(())
+    }
+}
+```
+
+#### `SegmentedLog` (_struct_)
 
 ...
 
