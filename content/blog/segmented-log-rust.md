@@ -2971,12 +2971,14 @@ where
     type TruncError = SegmentError<S::Error, SERP::Error>;
 
     async fn truncate(&mut self, mark: &Self::Mark) -> Result<(), Self::TruncError> {
+        // obtain the index record for the Record at the given index
         let index_record = self
             .index
             .read(mark)
             .await
             .map_err(SegmentError::IndexError)?;
 
+        // obtain the position of the record on the underlying store
         let position = S::Position::from_u64(index_record.position as u64)
             .ok_or(SegmentError::IncompatiblePositionType)?;
 
