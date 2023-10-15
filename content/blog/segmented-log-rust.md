@@ -2297,7 +2297,7 @@ how it handles _reads_ and _appends_:
 
 Now that we know the needed behaviour, let's proceed with the implementation.
 
-First, we represent the configuration scheme for our `Segment`:
+First, we represent the configuration schema for our `Segment`:
 
 ```rust
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
@@ -3027,6 +3027,56 @@ where
 ```
 
 #### `SegmentedLog` (_struct_)
+
+With our underlying components in place, we are ready to encapsulate the
+_segmented-log_ data-structure.
+
+Similar to `Segment`, first we need to represent the configuration schema of
+our `SegmentedLog`:
+
+```rust
+/// Configuration for a SegmentedLog
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Config<Idx, Size> {
+    /// Number of read Segment instances that can have their
+    /// Index cached at the same time
+    ///
+    /// None value indicates that all segments have their Index
+    /// cached
+    pub num_index_cached_read_segments: Option<usize>,
+
+    /// Configuration for each Segment in a SegmentedLog.
+    pub segment_config: segment::Config<Size>,
+
+    /// Index to be used as the base_index of the first Segment,
+    /// in case no Segment instances are already associated 
+    /// with the SegmentedLog in question.
+    pub initial_index: Idx,
+}
+```
+
+Next, we express our notion of a _segmented-log_ as the `SegmentedLog`
+_struct_:
+
+```rust
+pub struct SegmentedLog<S, M, H, Idx, Size, SERP, SSP, C> {
+    /// Current write_segment where all the writes go
+    write_segment: Option<Segment<S, M, H, Idx, Size, SERP>>,
+
+    /// Vector of read_segments, sorted by base_index
+    read_segments: Vec<Segment<S, M, H, Idx, Size, SERP>>,
+
+    config: Config<Idx, Size>,
+
+    /// Cache of segments that are currently cached
+    segments_with_cached_index: Option<C>,
+
+    /// Abstraction over storage media to acquire
+    /// SegmentStorage
+    segment_storage_provider: SSP,
+}
+```
+
 
 ...
 
