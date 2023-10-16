@@ -3031,8 +3031,8 @@ where
 With our underlying components in place, we are ready to encapsulate the
 _segmented-log_ data-structure.
 
-Similar to `Segment`, first we need to represent the configuration schema of
-our `SegmentedLog`:
+Similar to `Segment`, we need to represent the configuration schema of
+our `SegmentedLog` first:
 
 ```rust
 /// Configuration for a SegmentedLog
@@ -3077,6 +3077,83 @@ pub struct SegmentedLog<S, M, H, Idx, Size, SERP, SSP, C> {
 }
 ```
 
+The generic parameters are as follows:
+- `S`: `Storage` _trait_ impl. to be used as storage foor underlying `Segment` instances
+- `M`: Metadata to be used as parameter to `MetaWithIdx` in every `Record`
+- `Idx`: Unsigned integer type to be used as record indices
+- `Size`: Unsigned integer type to be used as storage size
+- `SERP`: `SerializationProvider` _trait_ impl.
+- `SSP`: `SegmentStorageProvider` _trait_ impl.
+- `C`: `Cache` _trait_ impl.
+
+The `Cache` _trait_ is from the crate
+[generational-cache](https://github.com/arindas/generational-cache/). It
+represents an abstract `Cache`, and is defined as follows:
+
+```rust
+/// A size bounded map, where certain existing entries are evicted to make space for new entires.
+pub trait Cache<K, V> {
+    type Error;
+
+    fn insert(&mut self, key: K, value: V) -> Result<Eviction<K, V>, Self::Error>;
+
+    fn remove(&mut self, key: &K) -> Result<Lookup<V>, Self::Error>;
+
+    /// Removes enough blocks that are due to be evicted to fit to the given capacity;
+    /// shrinks underlying memory and capacity to the given capacity.
+    ///
+    /// If current length is less than or equal to the given capacity, no blocks are
+    /// removed. Only the backing memory and capacity are shrunk.
+    fn shrink(&mut self, new_capacity: usize) -> Result<(), Self::Error>;
+
+    /// Reserves enough memory and increases capacity to contain the given additional
+    /// number of blocks.
+    fn reserve(&mut self, additional: usize) -> Result<(), Self::Error>;
+
+    fn query(&mut self, key: &K) -> Result<Lookup<&V>, Self::Error>;
+
+    fn capacity(&self) -> usize;
+
+    fn len(&self) -> usize;
+
+    fn is_maxed(&self) -> bool {
+        self.len() == self.capacity()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn clear(&mut self) -> Result<(), Self::Error>;
+}
+
+/// An evicted value from cache.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Eviction<K, V> {
+    Block { key: K, value: V },
+    Value(V),
+    None,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Lookup<V> {
+    Hit(V),
+    Miss,
+}
+```
+
+Now this is all fine and dandy but you are probably wondering, "Why do we need
+a cache again?" Remember that if all `Segment` instances are `Index` cached, for
+every `1GB` of record data, we need `16MB` of heap memory. So we made `Index`
+caching optional to keep memory usage from exploding.
+
+How do we decide which `Segment` instances are to cache their Index? We use
+another cache `segments_with_cached_index` to decide which Segment instances
+cache their `Index`. We can choose the cache type based on a access
+patterns (LRU, LFU etc.)
+
+However, there might be cases, where the user may want all `Segment` instances
+to cache their `Index`. So we also make `segments_with_cached_index` optional.
 
 ...
 
