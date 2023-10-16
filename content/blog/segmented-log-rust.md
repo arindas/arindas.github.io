@@ -3091,7 +3091,8 @@ The `Cache` _trait_ is from the crate
 represents an abstract `Cache`, and is defined as follows:
 
 ```rust
-/// A size bounded map, where certain existing entries are evicted to make space for new entires.
+/// A size bounded map, where certain existing entries are evicted to make space for new
+/// entires.
 pub trait Cache<K, V> {
     type Error;
 
@@ -3144,15 +3145,15 @@ pub enum Lookup<V> {
 
 Now this is all fine and dandy but you are probably wondering, "Why do we need
 a cache again?" Remember that if all `Segment` instances are `Index` cached, for
-every `1GB` of record data, we need `16MB` of heap memory. So we made `Index`
-caching optional to keep memory usage from exploding.
+every `1GB` of record data, we need `16MB` of heap memory if record sizes are
+`1KB`. So we made `Index` caching optional to keep memory usage from exploding.
 
 How do we decide which `Segment` instances are to cache their Index? We use
 another cache `segments_with_cached_index` to decide which Segment instances
 cache their `Index`. We can choose the cache type based on a access
 patterns (LRU, LFU etc.)
 
-However, there might be cases, where the user may want all `Segment` instances
+However, there might be cases, where the user might want all `Segment` instances
 to cache their `Index`. So we also make `segments_with_cached_index` optional.
 
 ...
