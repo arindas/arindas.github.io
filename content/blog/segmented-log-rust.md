@@ -2852,7 +2852,7 @@ where
     SERP: SerializationProvider,
 {
     /// Creates a Segment given a SegmentStorageProvider &mut ref, segment
-    /// Config, base_index and a flag cache_index_records which decides
+    /// Config, base_index and a flag cache_index_records_flag which decides
     /// whether to cache the Segment index at initialization.
     ///
     /// This function uses the SegmentStorageProvider ref to obtain the
@@ -2860,7 +2860,7 @@ where
     /// base_index. Next, it creates the Segment using the obtained
     /// SegmentStorage and base_index.
     ///
-    /// The cache_index_records flag decides whether to read all the
+    /// The cache_index_records_flag flag decides whether to read all the
     /// IndexRecord instances stored in at the associated Index at 
     /// the start. It behaves as follows:
     /// - true: Read all the IndexRecord instances into the cached vector 
@@ -2870,11 +2870,11 @@ where
     /// Segment's index caching API.
     ///
     /// Returns the created Segment instance.
-    pub async fn with_segment_storage_provider_config_base_index_and_cache_index_records<SSP>(
+    pub async fn with_segment_storage_provider_config_base_index_and_cache_index_records_flag<SSP>(
         segment_storage_provider: &mut SSP,
         config: Config<S::Size>,
         base_index: Idx,
-        cache_index_records: bool,
+        cache_index_records_flag: bool,
     ) -> Result<Self, SegmentError<S::Error, SERP::Error>>
     where
         SSP: SegmentStorageProvider<S, Idx>,
@@ -2884,7 +2884,7 @@ where
             .await
             .map_err(SegmentError::StorageError)?;
 
-        let index = if cache_index_records {
+        let index = if cache_index_records_flag {
             Index::with_storage_and_base_index(segment_storage.index, base_index).await
         } else {
             Index::with_storage_index_records_option_and_validated_base_index(
@@ -3149,12 +3149,117 @@ every `1GB` of record data, we need `16MB` of heap memory if record sizes are
 `1KB`. So we made `Index` caching optional to keep memory usage from exploding.
 
 How do we decide which `Segment` instances are to cache their Index? We use
-another cache `segments_with_cached_index` to decide which Segment instances
+another cache `segments_with_cached_index` to decide which `Segment` instances
 cache their `Index`. We can choose the cache type based on a access
 patterns (LRU, LFU etc.)
 
+Now we don't need to store the `Segment` instances itself in the `Cache`
+implementation. We can instead store the index of the `Segment` instance in the
+`read_segments` vector. Also we don't need to store any explicit values in our
+`Cache`, just the keys will do. So our bound would be: `Cache<usize, ()>`.
+
 However, there might be cases, where the user might want all `Segment` instances
 to cache their `Index`. So we also make `segments_with_cached_index` optional.
+
+Next, let's implement a constructor for our `SegmentedLog`:
+
+```rust
+impl<S, M, H, Idx, SERP, SSP, C> SegmentedLog<S, M, H, Idx, S::Size, SERP, SSP, C>
+where
+    S: Storage,
+    S::Size: Copy,
+    H: Default,
+    Idx: Unsigned + FromPrimitive + Copy + Ord,
+    SERP: SerializationProvider,
+    SSP: SegmentStorageProvider<S, Idx>,
+    C: Cache<usize, ()> + Default,
+    C::Error: Debug,
+{
+    /// Creates a new SegmentedLog from the given config and segment_storage_provider.
+    pub async fn new(
+        config: Config<Idx, S::Size>,
+        mut segment_storage_provider: SSP,
+    ) -> Result<Self, LogError<S, SERP, C>> {
+        let mut segment_base_indices = segment_storage_provider
+            .obtain_base_indices_of_stored_segments()
+            .await
+            .map_err(SegmentedLogError::StorageError)?;
+
+        match segment_base_indices.first() {
+            Some(base_index) if base_index < &config.initial_index => {
+                Err(SegmentedLogError::BaseIndexLesserThanInitialIndex)
+            }
+            _ => Ok(()),
+        }?;
+
+        // Last segment is the write segment. If no segments are a available use
+        // initial_index as base_index for write segment
+        let write_segment_base_index = segment_base_indices.pop().unwrap_or(config.initial_index);
+
+        let read_segment_base_indices = segment_base_indices;
+
+        let mut read_segments = Vec::<Segment<S, M, H, Idx, S::Size, SERP>>::with_capacity(
+            read_segment_base_indices.len(),
+        );
+
+
+        // create read segments
+        for segment_base_index in read_segment_base_indices {
+
+            // Cache index records for read segments only if num_index_cached_read_segments
+            // limit is not set. If a limit is set, read segments should be cached only
+            // when referenced
+            read_segments.push(
+                Segment::with_segment_storage_provider_config_base_index_and_cache_index_records_flag(
+                    &mut segment_storage_provider,
+                    config.segment_config,
+                    segment_base_index,
+                    config.num_index_cached_read_segments.is_none(),
+                )
+                .await
+                .map_err(SegmentedLogError::SegmentError)?,
+            );
+        }
+
+        let write_segment =
+            Segment::with_segment_storage_provider_config_base_index_and_cache_index_records_flag(
+                &mut segment_storage_provider,
+                config.segment_config,
+                write_segment_base_index,
+                true, // write segment is always cached
+            )
+            .await
+            .map_err(SegmentedLogError::SegmentError)?;
+
+        let cache = match config.num_index_cached_read_segments {
+            Some(cache_capacity) => {
+                let mut cache = C::default();
+
+                // Keep provision for exactly cache_capacity number of elements
+                // in the cache. Don't under or over allocate.
+
+                cache
+                    .reserve(cache_capacity)
+                    .map_err(SegmentedLogError::CacheError)?;
+                cache
+                    .shrink(cache_capacity)
+                    .map_err(SegmentedLogError::CacheError)?;
+
+                Some(cache)
+            }
+            None => None,
+        };
+
+        Ok(Self {
+            write_segment: Some(write_segment),
+            read_segments,
+            config,
+            segments_with_cached_index: cache,
+            segment_storage_provider,
+        })
+    }
+}
+```
 
 ...
 
