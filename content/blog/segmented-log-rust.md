@@ -3690,6 +3690,347 @@ different workloads:
 Read them on the repository in the `SegmentedLog`
 [module](https://github.com/arindas/laminarmq/blob/main/src/storage/commit_log/segmented_log/mod.rs).
 
+Next, we need to prepare for our `SegmentedLog::append` implementation. The
+basic outline of `append()` is as follows:
+- If current write segment is maxed, rotate write segment to a read segment,
+  and create a new write segment that start off where it left.
+- Append the record to the write segment
+
+So, we need to implemenent write segment rotation. Let's proceed:
+
+```rust
+
+impl<S, M, H, Idx, SERP, SSP, C> SegmentedLog<S, M, H, Idx, S::Size, SERP, SSP, C>
+where
+    S: Storage,
+    S::Content: SplitAt<u8>,
+    S::Size: Copy,
+    H: Hasher + Default,
+    Idx: FromPrimitive + ToPrimitive + Unsigned + CheckedSub,
+    Idx: Copy + Ord + Serialize + DeserializeOwned,
+    M: Serialize + DeserializeOwned,
+    SERP: SerializationProvider,
+    SSP: SegmentStorageProvider<S, Idx>,
+    C: Cache<usize, ()>,
+    C::Error: Debug,
+{
+    /// Rotates the current write segment to a read segment.
+    ///
+    /// This method flushes the current write segment and pushes it to the
+    /// vector of read segments. It creates a new write segment with base
+    /// index set to the highest index of the previous write segment.
+    ///
+    /// If max segments with cached index limit is set, it probes the newly
+    /// added read segment i.e the old write segment, to mark it for
+    /// index-caching.
+    pub async fn rotate_new_write_segment(&mut self) -> Result<(), LogError<S, SERP, C>> {
+        self.flush().await?;
+
+        let mut write_segment = take_write_segment!(self)?;
+        let next_index = write_segment.highest_index();
+
+        // No segments are to be index cached. Drop index records cache
+        // of old write segment
+        if let Some(0) = self.config.num_index_cached_read_segments {
+            drop(write_segment.take_cached_index_records());
+        }
+
+        let rotated_segment_id = self.read_segments.len();
+        self.read_segments.push(write_segment);
+
+        self.probe_segment(Some(rotated_segment_id)).await?;
+
+        self.write_segment = Some(new_write_segment!(self, next_index)?);
+
+        Ok(())
+    }
+
+    /// Flushes all data stored in the current write segment.
+    pub async fn flush(&mut self) -> Result<(), LogError<S, SERP, C>> {
+        let write_segment = take_write_segment!(self)?;
+
+        let write_segment = write_segment
+            .flush(&mut self.segment_storage_provider)
+            .await
+            .map_err(SegmentedLogError::SegmentError)?;
+
+        self.write_segment = Some(write_segment);
+
+        Ok(())
+    }
+
+    // ...
+}
+```
+
+>A previous implementation used to directly close and re-open the write segment
+>to flush it. This led to readng the index records multiple times when rotating
+>segments. The new `Segment::flush` API avoids doing that, making the current
+>`rotate_new_write_segment` implementation more efficient.
+
+With this we are aready to implement `CommitLog::append` for our `SegmentedLog`:
+
+```rust
+#[async_trait(?Send)]
+impl<S, M, H, Idx, SERP, SSP, C> CommitLog<MetaWithIdx<M, Idx>, S::Content>
+    for SegmentedLog<S, M, H, Idx, S::Size, SERP, SSP, C>
+where
+    S: Storage,
+    S::Content: SplitAt<u8>,
+    S::Size: Copy,
+    H: Hasher + Default,
+    Idx: FromPrimitive + ToPrimitive + Unsigned + CheckedSub,
+    Idx: Copy + Ord + Serialize + DeserializeOwned,
+    M: Default + Serialize + DeserializeOwned,
+    SERP: SerializationProvider,
+    SSP: SegmentStorageProvider<S, Idx>,
+    C: Cache<usize, ()>,
+    C::Error: Debug,
+{
+    type Error = LogError<S, SERP, C>;
+
+    async fn remove_expired(
+        &mut self,
+        expiry_duration: std::time::Duration,
+    ) -> Result<Self::Idx, Self::Error> {
+        self.remove_expired_segments(expiry_duration).await
+    }
+
+    async fn append<X, XBuf, XE>(
+        &mut self,
+        record: Record<M, Idx, X>,
+    ) -> Result<Self::Idx, Self::Error>
+    where
+        X: Stream<Item = Result<XBuf, XE>>,
+        X: Unpin + 'async_trait,
+        XBuf: Deref<Target = [u8]>,
+    {
+        if write_segment_ref!(self, as_ref)?.is_maxed() {
+            self.rotate_new_write_segment().await?;
+        }
+
+        write_segment_ref!(self, as_mut)?
+            .append(record)
+            .await
+            .map_err(SegmentedLogError::SegmentError)
+    }
+}
+```
+
+Exactly, as discussed. Now let't implement the missing `remove_expired_segments` method:
+
+```rust
+impl<S, M, H, Idx, SERP, SSP, C> SegmentedLog<S, M, H, Idx, S::Size, SERP, SSP, C>
+where
+    S: Storage,
+    S::Content: SplitAt<u8>,
+    S::Size: Copy,
+    H: Hasher + Default,
+    Idx: FromPrimitive + ToPrimitive + Unsigned + CheckedSub,
+    Idx: Copy + Ord + Serialize + DeserializeOwned,
+    M: Serialize + DeserializeOwned,
+    SERP: SerializationProvider,
+    SSP: SegmentStorageProvider<S, Idx>,
+    C: Cache<usize, ()>,
+    C::Error: Debug,
+{
+    // ...
+
+    /// Removes segments from this SegmentedLog that are older than the given expiry_duration.
+    ///
+    /// Returns the number of records removed on the removal of those segments.
+    pub async fn remove_expired_segments(
+        &mut self,
+        expiry_duration: Duration,
+    ) -> Result<Idx, LogError<S, SERP, C>> {
+        if write_segment_ref!(self, as_ref)?.is_empty() {
+            self.flush().await?
+        }
+
+        let next_index = self.highest_index();
+
+        let mut segments = std::mem::take(&mut self.read_segments);
+        segments.push(take_write_segment!(self)?);
+
+        let segment_pos_in_vec = segments
+            .iter()
+            .position(|segment| !segment.has_expired(expiry_duration));
+
+        let (mut to_remove, mut to_keep) = if let Some(pos) = segment_pos_in_vec {
+            let non_expired_segments = segments.split_off(pos);
+            (segments, non_expired_segments)
+        } else {
+            (segments, Vec::new())
+        };
+
+        let write_segment = if let Some(write_segment) = to_keep.pop() {
+            write_segment
+        } else {
+            new_write_segment!(self, next_index)?
+        };
+
+        self.read_segments = to_keep;
+        self.write_segment = Some(write_segment);
+
+        let to_remove_len = to_remove.len();
+
+        let mut num_records_removed = <Idx as num::Zero>::zero();
+        for segment in to_remove.drain(..) {
+            num_records_removed = num_records_removed + segment.len();
+            consume_segment!(segment, remove)?;
+        }
+
+        self.unregister_cache_for_segments(0..to_remove_len)?;
+
+        Ok(num_records_removed)
+    }
+}
+```
+
+Let's summarize what is going on above:
+- Flush the write segment
+- Make a copy of the current `highest_index` as `next_index`. It is to be used
+  as the `base_index` of the next _write_ segment to be created.
+- Take all segments (both read and write) into a single vector
+- These segments are sorted by both index and age. The ages are in _descending_
+  order
+- We find the first segment in this segment that is young enough to not be
+  considered expired
+- We split the vector into two parts, the ones `to_remove` and the ones
+  `to_keep`. The ones `to_keep` starts from the first non-expired segment. The
+  older ones are the ones `to_remove`
+- We isolate the last segment from the segments `to_keep` as the _write_
+  segment. If there are no segments to keep (i.e `to_keep` is empty), we create
+  a new _write_ segment with `base_index` set to the the `next_index` we stored
+  earlier.
+- We remove the segments to be removed (i.e the ones in `to_remove`) from
+  storage. We also remove their entries from the cache.
+
+Next, let's see the `AsyncTruncate` _trait_ impl. for `SegmentedLog`:
+
+```rust
+#[async_trait(?Send)]
+impl<S, M, H, Idx, SERP, SSP, C> AsyncTruncate for SegmentedLog<S, M, H, Idx, S::Size, SERP, SSP, C>
+where
+    S: Storage,
+    S::Content: SplitAt<u8>,
+    S::Size: Copy,
+    SERP: SerializationProvider,
+    H: Hasher + Default,
+    Idx: Unsigned + CheckedSub + FromPrimitive + ToPrimitive + Ord + Copy,
+    Idx: Serialize + DeserializeOwned,
+    M: Default + Serialize + DeserializeOwned,
+    SSP: SegmentStorageProvider<S, Idx>,
+    C: Cache<usize, ()>,
+    C::Error: Debug,
+{
+    type TruncError = LogError<S, SERP, C>;
+
+    type Mark = Idx;
+
+    async fn truncate(&mut self, idx: &Self::Mark) -> Result<(), Self::TruncError> {
+        if !self.has_index(idx) {
+            return Err(SegmentedLogError::IndexOutOfBounds);
+        }
+
+        let write_segment = write_segment_ref!(self, as_mut)?;
+
+        if idx >= &write_segment.lowest_index() {
+            return write_segment
+                .truncate(idx)
+                .await
+                .map_err(SegmentedLogError::SegmentError);
+        }
+
+        let segment_pos_in_vec = self
+            .position_read_segment_with_idx(idx)
+            .ok_or(SegmentedLogError::IndexGapEncountered)?;
+
+        let segment_to_truncate = self
+            .read_segments
+            .get_mut(segment_pos_in_vec)
+            .ok_or(SegmentedLogError::IndexGapEncountered)?;
+
+        segment_to_truncate
+            .truncate(idx)
+            .await
+            .map_err(SegmentedLogError::SegmentError)?;
+
+        let next_index = segment_to_truncate.highest_index();
+
+        let mut segments_to_remove = self.read_segments.split_off(segment_pos_in_vec + 1);
+        segments_to_remove.push(take_write_segment!(self)?);
+
+        let segments_to_remove_len = segments_to_remove.len();
+
+        for segment in segments_to_remove.drain(..) {
+            consume_segment!(segment, remove)?;
+        }
+
+        self.write_segment = Some(new_write_segment!(self, next_index)?);
+
+        self.unregister_cache_for_segments(
+            (0..segments_to_remove_len).map(|x| x + segment_pos_in_vec + 1),
+        )?;
+
+        Ok(())
+    }
+}
+```
+
+Let's summarize what is going on above:
+- If the given index is out of bounds, error out
+- If the given index is contained withing the write segment, truncate the write
+  segment and call it a day.
+- If none of the above conditions are true continue on
+- Find the segment which contains the given index
+- Truncate the segment at the given index
+- Remove all segments that come after this segment; also remove their entries
+  from the cache
+- Create a new write segment which has it's `base_index` set to the `highest_index`
+  of the truncated segment. Set it as the new write segment
+
+Finally we have the `AsyncConsume` _trait_ impl. for `SegmentedLog`:
+
+```rust
+/// Consumes all Segment instances in this SegmentedLog.
+macro_rules! consume_segmented_log {
+    ($segmented_log:ident, $consume_method:ident) => {
+        let segments = &mut $segmented_log.read_segments;
+        segments.push(take_write_segment!($segmented_log)?);
+        for segment in segments.drain(..) {
+            consume_segment!(segment, $consume_method)?;
+        }
+    };
+}
+
+#[async_trait(?Send)]
+impl<S, M, H, Idx, SERP, SSP, C> AsyncConsume for SegmentedLog<S, M, H, Idx, S::Size, SERP, SSP, C>
+where
+    S: Storage,
+    SERP: SerializationProvider,
+    C: Cache<usize, ()>,
+    C::Error: Debug,
+{
+    type ConsumeError = LogError<S, SERP, C>;
+
+    async fn remove(mut self) -> Result<(), Self::ConsumeError> {
+        consume_segmented_log!(self, remove);
+        Ok(())
+    }
+
+    async fn close(mut self) -> Result<(), Self::ConsumeError> {
+        consume_segmented_log!(self, close);
+        Ok(())
+    }
+}
+```
+
+### An example application using `SegmentedLog`
+
+The code for this example can be found
+[here](https://github.com/arindas/laminarmq/tree/examples/laminarmq-tokio-commit-log-server).
+
 ...
 
 ## Closing notes
