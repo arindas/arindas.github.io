@@ -4028,8 +4028,194 @@ where
 
 ### An example application using `SegmentedLog`
 
+Let's summarize what we want to achieve here:
+- A HTTP API server that provides RPC like endpoints for a commit log API
+- Providing on disk persitence to the underlying commit log using
+  [`tokio::fs`](https://docs.rs/tokio/latest/tokio/fs/index.html) based
+  `Storage` and `SegmentStorageProvider` _impls_.
+  
+Recall that we already wrote a `Storage` _impl_ using `tokios::fs` earlier
+[here](#a-sample-storage-impl). Now we need a `SegmentStorageProvider` _impl_.
+However, could we do even better?
+
+The mechanics for creating a maintaining a file hierarchy for storing segment
+store and index files will remain largely the same, even across different async
+runtimes and file implementations. What if we could also abstract that
+complexity away?
+
+#### `PathAddressedStorageProvider` (_trait_) 
+
+A `PathAddressedStorageProvider` obtains `Storage` _impl_ instances _adrressed
+by_ paths. We don't specify at this point where those paths belong (whether on
+disk based fs, vfs, nfs file share etc.)
+
+```rust
+#[async_trait(?Send)]
+pub trait PathAddressedStorageProvider<S>
+where
+    S: Storage,
+{
+    async fn obtain_storage<P>(&self, path: P) -> Result<S, S::Error>
+    where
+        P: AsRef<Path>;
+}
+```
+
+#### `DiskBackedSegmentStorageProvider` (_struct_)
+
+`DiskBackedSegmentStorageProvider` uses a `PathAddressedStorageProvider` impl.
+instance to implement `SegmentStorageProvider`. The
+`PathAddressedStorageProvider` implementing instance is expected to use on-disk
+filesystem backed paths and consequently, return `Storage` instances backed on
+the on-disk filesystem.
+
+```rust
+pub struct DiskBackedSegmentStorageProvider<S, PASP, Idx> {
+    path_addressed_storage_provider: PASP,
+    storage_directory_path: PathBuf,
+
+    _phantom_data: PhantomData<(S, Idx)>,
+}
+
+// ...
+
+impl<S, PASP, Idx> DiskBackedSegmentStorageProvider<S, PASP, Idx>
+where
+    PASP: PathAddressedStorageProvider<S>,
+    S: Storage,
+{
+    pub fn with_storage_directory_path_and_provider<P>(
+        storage_directory_path: P,
+        storage_provider: PASP,
+    ) -> Result<Self, std::io::Error>
+    where
+        P: AsRef<Path>,
+    {
+        let storage_directory_path = storage_directory_path.as_ref().to_path_buf();
+
+        // create a directory at the base storage_directory_path if it doesn't
+        // already exist
+        std::fs::create_dir_all(&storage_directory_path)?;
+
+        Ok(Self {
+            path_addressed_storage_provider: storage_provider,
+            storage_directory_path,
+            _phantom_data: PhantomData,
+        })
+    }
+}
+
+#[async_trait(?Send)]
+impl<Idx, S, PASP> SegmentStorageProvider<S, Idx> for DiskBackedSegmentStorageProvider<S, PASP, Idx>
+where
+    PASP: PathAddressedStorageProvider<S>,
+    Idx: Clone + Ord + FromStr + Display,
+    S: Storage,
+    S::Error: From<std::io::Error>,
+{
+    async fn obtain_base_indices_of_stored_segments(&mut self) -> Result<Vec<Idx>, S::Error> { /* ... */ }
+
+    async fn obtain(&mut self, idx: &Idx) -> Result<SegmentStorage<S>, S::Error> { /* ... */ }
+```
+
+Next, we will flesh out the `SegmentStorageProvider` implementation in detail.
+
+First, we have some standard file extensions for `Segment` `Store` and `Index` files:
+
+```rust
+pub const STORE_FILE_EXTENSION: &str = "store";
+pub const INDEX_FILE_EXTENSION: &str = "index";
+```
+
+We maintain a mostly flat hierarchy for storing our files:
+
+```
+storage_directory/
+├─ <segment_0_base_index>.store
+├─ <segment_0_base_index>.store 
+├─ <segment_1_base_index>.store
+├─ <segment_1_base_index>.store 
+...
+```
+
+Following this hierarchy, let's implement `SegmentStorageProvider` for our `DiskBackedSegmentStorageProvider`:
+
+```rust
+#[async_trait(?Send)]
+impl<Idx, S, PASP> SegmentStorageProvider<S, Idx> for DiskBackedSegmentStorageProvider<S, PASP, Idx>
+where
+    PASP: PathAddressedStorageProvider<S>,
+    Idx: Clone + Ord + FromStr + Display,
+    S: Storage,
+    S::Error: From<std::io::Error>,
+{
+    async fn obtain_base_indices_of_stored_segments(&mut self) -> Result<Vec<Idx>, S::Error> {
+        let read_dir = std::fs::read_dir(&self.storage_directory_path).map_err(Into::into)?;
+
+        // list all file names within the directory, filter by extension to get unique base
+        // indices, remove the extension and then parse the filename as an integer
+        let base_indices = read_dir
+            .filter_map(|dir_entry_result| dir_entry_result.ok().map(|dir_entry| dir_entry.path()))
+            .filter(|path| {
+                path.extension()
+                    .filter(|extension| *extension == INDEX_FILE_EXTENSION)
+                    .is_some()
+            })
+            .filter_map(|path| {
+                path.file_stem()
+                    .and_then(|path| path.to_str())
+                    .and_then(|idx_str| idx_str.parse::<Idx>().ok())
+            });
+
+        let base_indices: BinaryHeap<_> = base_indices.collect();
+
+        Ok(base_indices.into_sorted_vec())
+    }
+
+    async fn obtain(&mut self, idx: &Idx) -> Result<SegmentStorage<S>, S::Error> {
+        let store_path = self
+            .storage_directory_path
+            .join(format!("{idx}.{STORE_FILE_EXTENSION}"));
+
+        let index_path = self
+            .storage_directory_path
+            .join(format!("{idx}.{INDEX_FILE_EXTENSION}"));
+
+        let store = self
+            .path_addressed_storage_provider
+            .obtain_storage(store_path)
+            .await?;
+
+        let index = self
+            .path_addressed_storage_provider
+            .obtain_storage(index_path)
+            .await?;
+
+        Ok(SegmentStorage { store, index })
+    }
+}
+```
+
+With these utilities in place we can proceed with our commit log server example.
+
+#### `laminarmq-tokio-commit-log-server` (_crate_)
+
+A simple persistent commit log server using the tokio runtime.
+
 The code for this example can be found
 [here](https://github.com/arindas/laminarmq/tree/examples/laminarmq-tokio-commit-log-server).
+
+This server exposes the following HTTP endpoints:
+
+```rust
+.route("/index_bounds", get(index_bounds))  // obtain the index bounds
+.route("/records/:index", get(read))        // obtain the record at given index
+.route("/records", post(append))            // append a new record at the end of the commit log
+
+.route("/rpc/truncate", post(truncate))     // truncate the commit log 
+                                            // expects JSON: { "truncate_index": <idx: number> }
+                                            // records starting from truncate_index are removed
+```
 
 ...
 
