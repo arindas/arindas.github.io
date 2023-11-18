@@ -4217,6 +4217,78 @@ This server exposes the following HTTP endpoints:
                                             // records starting from truncate_index are removed
 ```
 
+##### Architecture outline for our commit-log server
+
+<p align="center">
+<img src="/img/laminarmq-tokio-commit-log-server-example.svg" alt="tokio-commit-log-server-architechture"/>
+</p>
+<p align="center" class="caption">
+<b>Fig:</b> Architecture for our <code>tokio</code> based commit-log server.
+</p>
+
+As you can see, we divide the responsiblity of the commit-log server between
+two halves:
+- __axum client facing web request handler__: Responsible for routing and parsing
+  HTTP requests
+- __commit-log request processing__: Uses an on disk persisted `CommitLog` _impl_
+  instance to process different commit-log API requests
+
+In order to process commit-log requests we run a dedicated request handler loop
+on it's own single threaded tokio runtime. The web client facing half forwards
+the parsed requests to the request processing half over a dedicated channel,
+collects the result and responds back to the client.
+
+In order the complete the loop, the request processing half also sends a
+channel send half `resp_tx`, while keeping the recv half `resp_rx` with
+themselves. The request processing half sends back the result using the send
+half `resp_tx` it received.
+
+We will be using [`axum`](https://docs.rs/axum/latest/axum/) for this example.
+
+Now that we have an outline of our architecture, let's proceed with the
+implementation.
+
+##### Request and Response types
+
+Let's use Rust's excellent _enums_ to represent our request and response types:
+
+```rust
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TruncateRequest {
+    truncate_index: u32,
+}
+
+#[derive(Debug)]
+pub enum AppRequest {
+    IndexBounds,
+    Read { index: u32 },
+    Append { record_value: Body },
+    Truncate(TruncateRequest),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IndexBoundsResponse {
+    highest_index: u32,
+    lowest_index: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AppendResponse {
+    write_index: u32,
+}
+
+#[derive(Debug)]
+pub enum AppResponse {
+    IndexBounds(IndexBoundsResponse),
+    Read { record_value: Vec<u8> },
+    Append(AppendResponse),
+    Truncate,
+}
+```
+
+>Why did we use _structs_ for certain _enum_ values? Well, we will be using
+>those _structs_ later for parsing json requests in `axum` routes.
+
 ...
 
 ## Closing notes
