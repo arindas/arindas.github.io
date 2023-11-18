@@ -2,7 +2,6 @@
 title = "Building Segmented Logs in Rust: From Theory to Production!"
 date = 2023-10-10
 description = "Explore a Rust implementation of the persistence mechanism behind message-queues and write-ahead-logs in databases. Embark on a journey from the theoretical underpinnings to a production grade implementation of the segmented-log data structure."
-draft = true
 
 [taxonomies]
 tags = ["rust", "tokio", "segmented-log", "message-queue", "distributed-systems"]
@@ -4209,12 +4208,17 @@ This server exposes the following HTTP endpoints:
 
 ```rust
 .route("/index_bounds", get(index_bounds))  // obtain the index bounds
+
 .route("/records/:index", get(read))        // obtain the record at given index
-.route("/records", post(append))            // append a new record at the end of the commit log
+
+.route("/records", post(append))            // append a new record at the end of the
+                                            // commit-log
 
 .route("/rpc/truncate", post(truncate))     // truncate the commit log 
-                                            // expects JSON: { "truncate_index": <idx: number> }
-                                            // records starting from truncate_index are removed
+                                            // expects JSON: 
+                                            // { "truncate_index": <idx: number> }
+                                            // records starting from truncate_index
+                                            // are removed
 ```
 
 ##### Architecture outline for our commit-log server
@@ -4289,11 +4293,558 @@ pub enum AppResponse {
 >Why did we use _structs_ for certain _enum_ values? Well, we will be using
 >those _structs_ later for parsing json requests in `axum` routes.
 
-...
+Now recall that we will be communicating between the axum server task and the
+commit-log request processing task. Let's define a `Message` type to encode the
+medium of communication.
+
+```rust
+type ResponseResult = Result<AppResponse, String>;
+
+/// Unit of communication between the client facing task and the request
+/// processing task
+pub enum Message {
+    /// Initiated by the client facing task to request processing
+    /// from the commit-log request processing task
+    Connection {
+        /// Used to send back response, oneshot since we are
+        /// meant to send back the response only once
+        resp_tx: oneshot::Sender<ResponseResult>,
+        /// The request to be processed
+        request: AppRequest,
+    },
+
+    /// Used to notify the processing task to stop executing
+    Terminate,
+}
+```
+
+##### Commit Log server config
+
+We also need to two configurable paramters. Let's define them in a _struct_:
+
+```rust
+/// Configuration for the commit-log request processing server.
+pub struct CommitLogServerConfig {
+    /// Maximum number of Message instances that can be buffered in the
+    /// communication channel
+    message_buffer_size: usize,
+
+    /// Maximum number of connections that can be serviced concurrently
+    max_connections: usize,
+}
+```
+
+##### Commit Log server request handler
+
+With the pre-requisites ready, let's proceed with actually processing our
+commit-log requests.
+
+First, we need a struct to manage commit-log server instances:
+
+```rust
+/// Abstraction to process commit-log requests
+pub struct CommitLogServer<CL> {
+    /// Receiver for receiving Message instances from the client facing
+    /// task
+    message_rx: mpsc::Receiver<Message>,
+
+    /// Underlying persistent commit log instance
+    commit_log: CL,
+
+    /// Maximum number of connections to concurrently serve
+    max_connections: usize,
+}
+
+impl<CL> CommitLogServer<CL> {
+    pub fn new(
+        message_rx: mpsc::Receiver<Message>,
+        commit_log: CL,
+        max_connections: usize,
+    ) -> Self {
+        Self {
+            message_rx,
+            commit_log,
+            max_connections,
+        }
+    }
+}
+```
+
+Here `CL` is a type implementing the `CommitLog` _trait_.
+
+There's also an error type and a few aliases to make life easier. Feel free to
+look them up in the
+[repository](https://github.com/arindas/laminarmq/blob/examples/laminarmq-tokio-commit-log-server/src/main.rs).
+
+Next, we define our request handler that maps every request to it's
+corresponding response using the `CommitLog` _impl_ instance:
+
+```rust
+impl<CL> CommitLogServer<CL>
+where
+    CL: CommitLog<MetaWithIdx<(), u32>, Vec<u8>, Idx = u32> + 'static,
+{
+    /// Function to handle an AppRequest using a CommitLog instance with shared ownership.
+    pub async fn handle_request(
+        commit_log: Rc<RwLock<CL>>, // enable concurrent handling of requests
+        request: AppRequest,
+    ) -> Result<AppResponse, CommitLogServerError<CL::Error>> {
+        match request {
+            AppRequest::IndexBounds => {
+                let commit_log = commit_log.read().await;
+
+                Ok(AppResponse::IndexBounds(IndexBoundsResponse {
+                    highest_index: commit_log.highest_index(),
+                    lowest_index: commit_log.lowest_index(),
+                }))
+            }
+
+            AppRequest::Read { index: idx } => commit_log
+                .read()
+                .await
+                .read(&idx)
+                .await
+                .map(|Record { metadata: _, value }| AppResponse::Read {
+                    record_value: value,
+                })
+                .map_err(CommitLogServerError::CommitLogError),
+
+            AppRequest::Append { record_value } => commit_log
+                .write()
+                .await
+                .append(Record {
+                    metadata: MetaWithIdx {
+                        metadata: (),
+                        index: None,
+                    },
+                    value: record_value,
+                })
+                .await
+                .map(|write_index| AppResponse::Append(AppendResponse { write_index }))
+                .map_err(CommitLogServerError::CommitLogError),
+
+            AppRequest::Truncate(TruncateRequest {
+                truncate_index: idx,
+            }) => commit_log
+                .write()
+                .await
+                .truncate(&idx)
+                .await
+                .map(|_| AppResponse::Truncate)
+                .map_err(CommitLogServerError::CommitLogError),
+        }
+    }
+
+    // ...
+}
+```
+
+>Notice that we are directly passing in
+>[`Body`](https://docs.rs/hyper/0.14.27/hyper/body/struct.Body.html) to our
+>`CommitLog::append()` without using
+>[`to_bytes()`](https://docs.rs/hyper/0.14.27/hyper/body/fn.to_bytes.html).
+>This is possible because `Body` implements `Stream<Result<Bytes, _>>` which
+>satisfies the trait bound `Stream<Result<Deref<Target = [u8]>, _>>`. This
+>allows us to write the entire request body in a streaming manner without
+>concatenating the intermediate (packet) buffers. (See
+>[`CommitLog`](#commitlog-trait) and [`Storage`](#storage-trait) for a
+>refresher.)
+
+The above implementation is fairly straightforward: there is a one-to-one
+mapping between the request, the commit-log methods and the responses.
+
+##### Commit Log server task managment and orchestration
+
+As discussed before, we run our commit-log server tasks and request handling
+loop in single-threaded tokio runtime.
+
+However, let's first derive a basic outline of the request handling loop. In the
+simplest form, it could be something as follows:
+
+```rust
+while let Some(Message::Connection { resp_tx, req }) = message_rx.recv().await {
+    let resp = handle(req).await?;
+    resp_tx.send(resp).await?;
+}
+```
+
+Notice that we explicitly match on `Message::Connection` so that we can exit
+the loop when we receive a `Message::Terminate`.
+
+Now we want to service multiple connections concurrently. Sure. Does this work?
+
+```rust
+while let Some(Message::Connection { resp_tx, req }) = message_rx.recv().await {
+    spawn(async {
+        let resp = handle(req).await?;
+        resp_tx.send(resp).await?;
+    }).await?
+}
+```
+
+Almost. We just need to impose concurrency control. Let's do that:
+
+```rust
+while let Some(Message::Connection { resp_tx, req }) = message_rx.recv().await {
+    spawn(async {
+        acquire_connection_permit().await?; // blocks until number of
+                                            // concurrent connections is
+                                            // over max_connections limit
+
+        let resp = handle(req).await?;
+        resp_tx.send(resp).await?;
+    }).await?
+}
+```
+
+Let us now look at the actual implementation:
+
+```rust
+impl<CL> CommitLogServer<CL>
+where
+    CL: CommitLog<MetaWithIdx<(), u32>, Vec<u8>, Idx = u32> + 'static,
+{
+    // ...
+
+    pub async fn serve(self) {
+        let (mut message_rx, commit_log, max_connections) =
+            (self.message_rx, self.commit_log, self.max_connections);
+
+        // counting Semaphore for connections concurrency control
+        let conn_semaphore = Rc::new(Semaphore::new(max_connections));
+        let commit_log = Rc::new(RwLock::new(commit_log));
+
+        let commit_log_copy = commit_log.clone();
+
+        let local = task::LocalSet::new();
+
+        local
+            .run_until(async move {
+                while let Some(Message::Connection { resp_tx, request }) = message_rx.recv().await {
+                    let (conn_semaphore, commit_log_copy) =
+                        (conn_semaphore.clone(), commit_log_copy.clone());
+
+                    task::spawn_local(
+                        async move {
+                            let response = async move {
+                                let _semaphore_permit = conn_semaphore
+                                    .acquire()
+                                    .await
+                                    .map_err(CommitLogServerError::ConnPermitAcquireError)?;
+
+                                let commit_log = commit_log_copy;
+
+                                let response = Self::handle_request(commit_log, request).await?;
+
+                                Ok::<_, CommitLogServerError<CL::Error>>(response)
+                            }
+                            .await
+                            .map_err(|err| format!("{:?}", err));
+
+                            if let Err(err) = resp_tx.send(response) {
+                                error!("error sending response: {:?}", err)
+                            }
+                        }
+                        .instrument(error_span!("commit_log_server_handler_task")),
+                    );
+                }
+            })
+            .await;
+
+        match Rc::into_inner(commit_log) {
+            Some(commit_log) => match commit_log.into_inner().close().await {
+                Ok(_) => {}
+                Err(err) => error!("error closing commit_log: {:?}", err),
+            },
+            None => error!("unable to unrwap commit_log Rc"),
+        };
+
+        info!("Closed commit_log.");
+    }
+
+    // ...
+}
+```
+
+Don't sweat the individual details too much. However, try to see how this
+implementation fleshes out the basic outline we derived a bit earlier.
+
+Finally, we need to orchestrate the `serve()` function inside a single threaded
+tokio runtime:
+
+```rust
+impl<CL> CommitLogServer<CL>
+where
+    CL: CommitLog<MetaWithIdx<(), u32>, Vec<u8>, Idx = u32> + 'static,
+{
+    // ...
+
+    pub fn orchestrate<CLP, CLF>(
+        server_config: CommitLogServerConfig,
+        commit_log_provider: CLP,
+    ) -> (JoinHandle<Result<(), io::Error>>, mpsc::Sender<Message>)
+    where
+        CLP: FnOnce() -> CLF + Send + 'static,
+        CLF: Future<Output = CL>,
+        CL::Error: Send + 'static,
+    {
+        let CommitLogServerConfig {
+            message_buffer_size,
+            max_connections,
+        } = server_config;
+
+        let (message_tx, message_rx) = mpsc::channel::<Message>(message_buffer_size);
+
+        (
+            thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread().build()?;
+
+                rt.block_on(
+                    async move {
+                        let commit_log_server = CommitLogServer::new(
+                            message_rx,
+                            commit_log_provider().await,
+                            max_connections,
+                        );
+
+                        commit_log_server.serve().await;
+
+                        info!("Done serving requests.");
+                    }
+                    .instrument(info_span!("commit_log_server")),
+                );
+
+                Ok(())
+            }),
+            message_tx,
+        )
+    }
+}
+```
+
+All this method does is setup the channel for receiving messages, spawn a
+thread, create a single threaded rt in it and then call `serve()` within the
+single-threaded rt.
+
+We return the
+[`JoinHandle`](https://doc.rust-lang.org/std/thread/struct.JoinHandle.html) and
+the channel send end
+[`Sender`](https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Sender.html)
+from this function. They allow us to `join()` the spawned thread and send
+`Message` instances to our `CommitLogServer` respectively.
+
+##### Client facing axum server
+
+Let's now move on to the client facing end of our commit-log server. This side
+has three major responsiblities:
+- Parse HTTP Requests to appropriate `AppRequest` instances using the request
+  path and body
+- Send a `Message::Connection` containing the parsed `AppRequest` to the
+  `CommitLogServer`
+- Retrieve the response from the `CommitLogServer` using the connections
+  receive end and respond back to the user
+
+Our `axum` app state simply needs to contain the message channel `Sender`. We
+also add a method to making enqueuing requests easier:
+
+```rust
+struct AppState {
+    message_tx: mpsc::Sender<Message>,
+}
+
+#[derive(Debug)]
+pub enum ChannelError {
+    SendError,
+    RecvError,
+}
+
+impl AppState {
+    /// Sends the given AppRequest to the Message channel send end
+    ///
+    /// Also sets up the oneshot channel necessary for retrieving the response
+    /// from the CommitLogServer task.
+    ///
+    /// Returns the oneshot channel Receiver to receive the response from.
+    pub async fn enqueue_request(
+        &self,
+        request: AppRequest,
+    ) -> Result<oneshot::Receiver<ResponseResult>, ChannelError> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+
+        let message = Message::Connection { resp_tx, request };
+
+        self.message_tx
+            .send(message)
+            .await
+            .map_err(|_| ChannelError::SendError)?;
+
+        Ok(resp_rx)
+    }
+}
+```
+
+Our route handler functions will be mostly identical. I will show the read and
+append route handlers here. Feel free to read the rest of the route handlers
+[here](https://github.com/arindas/laminarmq/blob/examples/laminarmq-tokio-commit-log-server/src/main.rs)
+
+```rust
+// ...
+
+async fn read(
+    Path(index): Path<u32>,
+    State(state): State<AppState>,
+) -> Result<Vec<u8>, StringError> {
+    let resp_rx = state
+        .enqueue_request(AppRequest::Read { index })
+        .await
+        .map_err(|err| format!("error sending request to commit_log_server: {:?}", err))?;
+
+    let response = resp_rx
+        .await
+        .map_err(|err| format!("error receiving response: {:?}", err))??;
+
+    if let AppResponse::Read { record_value } = response {
+        Ok(record_value)
+    } else {
+        Err(StringError("invalid response type".into()))
+    }
+}
+
+async fn append(
+    State(state): State<AppState>,
+    request: Request<Body>,
+) -> Result<Json<AppendResponse>, StringError> {
+    let resp_rx = state
+        .enqueue_request(AppRequest::Append {
+            record_value: request.into_body(),
+        })
+        .await
+        .map_err(|err| format!("error sending request to commit_log_server: {:?}", err))?;
+
+    let response = resp_rx
+        .await
+        .map_err(|err| format!("error receiving reponse: {:?}", err))??;
+
+    if let AppResponse::Append(append_reponse) = response {
+        Ok(Json(append_reponse))
+    } else {
+        Err(StringError("invalid response type".into()))
+    }
+}
+
+// ...
+```
+
+Finally, we have our `main()` function for our binary:
+
+```rust
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                "laminarmq_tokio_commit_log_server=debug,tower_http=debug".into()
+            }),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    let storage_directory =
+        env::var("STORAGE_DIRECTORY").unwrap_or(DEFAULT_STORAGE_DIRECTORY.into());
+
+    let (join_handle, message_tx) = CommitLogServer::orchestrate(
+        CommitLogServerConfig {
+            message_buffer_size: 1024,
+            max_connections: 512,
+        },
+        || async {
+            let disk_backed_storage_provider =
+                DiskBackedSegmentStorageProvider::<_, _, u32>::with_storage_directory_path_and_provider(
+                    storage_directory,
+                    StdSeekReadFileStorageProvider,
+                )
+                .unwrap();
+
+            SegmentedLog::<
+                StdSeekReadFileStorage,
+                (),
+                crc32fast::Hasher,
+                u32,
+                u64,
+                bincode::BinCode,
+                _,
+                NoOpCache<usize, ()>,
+            >::new(
+                PERSISTENT_SEGMENTED_LOG_CONFIG,
+                disk_backed_storage_provider,
+            )
+            .await
+            .unwrap()
+        },
+    );
+
+    // Compose the routes
+    let app = Router::new()
+        .route("/index_bounds", get(index_bounds))
+        .route("/records/:index", get(read))
+        .route("/records", post(append))
+        .route("/rpc/truncate", post(truncate))
+        // Add middleware to all routes
+        .layer(
+            ServiceBuilder::new()
+                .layer(HandleErrorLayer::new(|error: BoxError| async move {
+                    if error.is::<tower::timeout::error::Elapsed>() {
+                        Ok(StatusCode::REQUEST_TIMEOUT)
+                    } else {
+                        Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Unhandled internal error: {}", error),
+                        ))
+                    }
+                }))
+                .timeout(Duration::from_secs(10))
+                .layer(TraceLayer::new_for_http())
+                .into_inner(),
+        )
+        .with_state(AppState {
+            message_tx: message_tx.clone(),
+        });
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+
+    tracing::debug!("listening on {}", addr);
+
+    hyper::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .unwrap();
+
+    message_tx.send(Message::Terminate).await.unwrap();
+
+    tokio::task::spawn_blocking(|| join_handle.join())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+    info!("Exiting application.");
+}
+```
+
+Feel free to checkout the remaining sections of the commit-log server implementation
+[here](https://github.com/arindas/laminarmq/tree/examples/laminarmq-tokio-commit-log-server/src/main.rs)
+
 
 ## Closing notes
 
-This concludes the implementation.
+This blog discussed a segmented-log implementation right from the theoretical
+foundations, to a production level library. At the end of the implementation,
+we explored an example commit-log server using our segmented-log
+implementation.
+
+Read more about [`laminarmq`](https://github.com/arindas/laminarmq) milestones
+[here](https://github.com/arindas/laminarmq#major-milestones-for-laminarmq)
 
 ## References
 
