@@ -5,11 +5,13 @@ sort_by = "date"
 template = "section.html"
 
 [extra]
-header = {title = "Hello! I'm Arindam Das.", img = "$BASE_URL/img/penguin.jpg" }
+header = { title = "Hi! I'm Arindam Das.", img = "$BASE_URL/img/penguin.jpg" }
 section_path = "blog/_index.md"
 max_posts = 4
 +++
 
 I primarily work with low-latency distributed systems and deep learning
 inference at scale. This blog discusses my projects, ideas and
-ruminations. All opinions expressed here are my own. Here's my [resume](https://github.com/arindas/resume/releases/latest/download/arindas-resume.pdf).
+ruminations. All opinions expressed here are my own.
+
+Here's my [resume](https://github.com/arindas/resume/releases/latest/download/arindas-resume.pdf).
