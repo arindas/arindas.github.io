@@ -13,7 +13,7 @@ quick_navigation_buttons = true
 header_image = "/img/segmented-log-basic-intro.png"
 +++
 
->_Psst._ Do you already know segmented logs well? If yes, jump [here](#a-segmented-log-implementation).
+> _Psst._ Do you already know segmented logs well? If yes, jump [here](#a-segmented-log-implementation).
 
 ## Prologue: The Log 📃🪵
 
@@ -32,7 +32,11 @@ Since the records are ordered by time, the log's record indices can be thought
 of as timestamps, with the convenient property of being decoupled from actual
 wall-clock time.
 
-The log indices effectively behave as Lamport clocks[^1].
+The log indices effectively behave as _Lamport clock timestamps_.
+
+> A lamport clock is a logical counter to establish causality between two
+> events. Since it's decoupled from wall-clock time, it's used in
+> distributed-systems for ordering events.
 
 So, why do we care about these kinds of logs? Why are they useful?
 
@@ -44,6 +48,7 @@ hold an elementary arithmetic lesson.
 The teacher makes every student write down a particular initial number. (e.g
 42). Next, the teacher plans to give a sequence of instructions to the
 students. The teacher may give the following kinds of instructions:
+
 ```
 - Add x; where x is a number
 - Sub x; where x is a number
@@ -64,20 +69,20 @@ required to submit the final calculated number to the teacher.
 <b>Fig:</b> Sample scenario with initial number 42.
 </p>
 
->So for instance, if the current number is 42, and the received instruction is
->`Add 3`, the student calculates:
+> So for instance, if the current number is 42, and the received instruction is
+> `Add 3`, the student calculates:
 >
->```
->result = Add 3 (current_number) = current_number + 3 = 42 + 3 = 45
->current_number = result ;; 45
->```
+> ```
+> result = Add 3 (current_number) = current_number + 3 = 42 + 3 = 45
+> current_number = result ;; 45
+> ```
 >
->Next if the student receives, `Div 5`:
+> Next if the student receives, `Div 5`:
 >
->```
->result = Div 5 (current_number) = current_number / 5 = 45 / 5 = 9
->current_number = result ;; 9
->```
+> ```
+> result = Div 5 (current_number) = current_number / 5 = 45 / 5 = 9
+> current_number = result ;; 9
+> ```
 
 Now, if all students start from the same initial number, and apply the same
 sequence of operations on their number, they are bound to come to the same
@@ -86,10 +91,10 @@ the final number at the end of the class. If the student got the same final
 number, they scored full marks.
 
 Notice that the students must follow the following to get full marks:
+
 - Start from the same correct initial number
 - Apply all the operations correctly in the given _order_, _without random
   mistakes_ in the correct _pre-determined_ way.
-
 
 With computer science, we can model the students as _deterministic_ state
 machines, the students' `current_number` as their internal state, and the
@@ -146,32 +151,32 @@ Now, in our case, because the backbenchers receive the same set of instructions
 in the same sequence, they go through the same set of internal states in the
 same sequence and arrive at the same final state. They effectively replicate
 the front and middle-benchers. Since, we can model students as state machines,
-we effectively did __state machine replication__ with a __log__.
+we effectively did **state machine replication** with a **log**.
 
 Finally, since the backbenchers receive the instructions through the log and
 not directly from the teacher, they lag behind a bit but eventually arrive at
-the same results. So we can say there is a __replication lag__.
+the same results. So we can say there is a **replication lag**.
 
->These concepts directly translate to distributed systems. Consider this:
+> These concepts directly translate to distributed systems. Consider this:
 >
->There is a database partition in a distributed database responsible for a
->certain subset of data. When any data manipulation queries are routed to it, it
->has to handle the queries. Instead of directly committing the effect of the
->queries on the underlying storage, it first writes the operations to be applied
->on the local storage, one-by-one into a log called the "write-ahead-log". Then
->it applies the operations from the write ahead log to the local storage.
+> There is a database partition in a distributed database responsible for a
+> certain subset of data. When any data manipulation queries are routed to it, it
+> has to handle the queries. Instead of directly committing the effect of the
+> queries on the underlying storage, it first writes the operations to be applied
+> on the local storage, one-by-one into a log called the "write-ahead-log". Then
+> it applies the operations from the write ahead log to the local storage.
 >
->In case there is a database failure, it can re-apply the operations in the
->write-ahead-log from the last committed entry and arrive at the same state.
+> In case there is a database failure, it can re-apply the operations in the
+> write-ahead-log from the last committed entry and arrive at the same state.
 >
->When this database partition needs to replicate itself to other follower
->partitions, it simply replicates the write-ahead-log to the followers instead
->of copying over the entire materialized state. The followers can use the same
->write ahead log to arrive to the same state as the leader partition.
+> When this database partition needs to replicate itself to other follower
+> partitions, it simply replicates the write-ahead-log to the followers instead
+> of copying over the entire materialized state. The followers can use the same
+> write ahead log to arrive to the same state as the leader partition.
 >
->Now the follower partitions, have to receive the write-ahead-log first over the
->network. Only then can they apply the operations. As a result they lag behind
->the leader. This is replication lag.
+> Now the follower partitions, have to receive the write-ahead-log first over the
+> network. Only then can they apply the operations. As a result they lag behind
+> the leader. This is replication lag.
 
 #### Asynchronous processing
 
@@ -184,7 +189,7 @@ gleefully applies the instructions on the number, arrives at the same results
 and scores full marks.
 
 However, notice what happened here: The student did the assignment in a
-completely out of sync or __asynchronous__ way with respect to the other
+completely out of sync or **asynchronous** way with respect to the other
 students.
 
 ---
@@ -231,13 +236,13 @@ of elements. What's the simplest data structure we can use to implement this?
 
 An array.
 
-However, we need __persistence__. So let's use a file based abstraction
+However, we need **persistence**. So let's use a file based abstraction
 instead.
 
->We can quite literally map a file to a process's virtual memory
->address space using the
->[`mmap()`](https://man7.org/linux/man-pages/man2/mmap.2.html) system call and
->then use it like an array, but that's a topic for a different day.
+> We can quite literally map a file to a process's virtual memory
+> address space using the
+> [`mmap()`](https://man7.org/linux/man-pages/man2/mmap.2.html) system call and
+> then use it like an array, but that's a topic for a different day.
 
 <p align="center">
 <img src="/img/log.png" alt="queue-diagram" width="50%"/>
@@ -252,10 +257,11 @@ file. Assume that this abstraction allows you to uniquely refer to any entry
 using it's index.
 
 Now, this setup has some problems:
+
 - All entries are sequentially written to a single large file
 - A single large file is difficult to store, move and copy
 - Few bad sectors in the underlying disk can make the whole file unrecoverable.
-This can render all stored data unusable.
+  This can render all stored data unusable.
 
 The logical next step is to split this abstraction across multiple smaller
 units. We call these smaller units _segments_.
@@ -268,6 +274,7 @@ units. We call these smaller units _segments_.
 </p>
 
 In this solution:
+
 - The record index range is split across smaller units called _segments_. The
   index ranges of different _segments_ are non-overlapping.
 - Each _segment_ individually behaves like a log
@@ -275,12 +282,13 @@ In this solution:
   stores the index range serviced by it along with a handle to the underlying
   file
 - We keep the `segment` entries sorted by their starting index
-- The first n - 1 _segments_  are called _read segments_. Their `segment`
+- The first n - 1 _segments_ are called _read segments_. Their `segment`
   entries are stored in a vector called `read_segments`
 - The last _segment_ is called the _write segment_. We assign it's `segment`
   entry to `write_segment`.
 
 Write behaviour:
+
 - All writes go to the `write_segment`
 - Each `segment` has a threshold on it's size
 - When the `write_segment` size exceeds it's threshold:
@@ -292,10 +300,10 @@ Write behaviour:
     previous _write segment_. This `segment` is assigned to `write_segment`
 
 Read behaviour (for reading a record at particular index):
+
 - Locate the `segment` where the index falls within the `segment`'s index
   range. Look first in the `read_segments` vector, fall back to `write_segment`
 - Read the record at the given index from the located `segment`
-
 
 ### Original description in the Apache Kafka paper
 
@@ -309,43 +317,43 @@ This section presents the `segmented_log` as described in the Apache Kafka
 <b>Fig:</b> <code>segmented_log</code> <i>(Fig. 2)</i> from the the Apache Kafka paper.
 </p>
 
->__Simple storage__: Kafka has a very simple storage layout. Each
->partition of a topic corresponds to a logical log. Physically, a log
->is implemented as a set of segment files of approximately the
->same size (e.g., 1GB). Every time a producer publishes a message
->to a partition, the broker simply appends the message to the last
->segment file. For better performance, we flush the segment files to
->disk only after a configurable number of messages have been
->published or a certain amount of time has elapsed. A message is
->only exposed to the consumers after it is flushed.
+> **Simple storage**: Kafka has a very simple storage layout. Each
+> partition of a topic corresponds to a logical log. Physically, a log
+> is implemented as a set of segment files of approximately the
+> same size (e.g., 1GB). Every time a producer publishes a message
+> to a partition, the broker simply appends the message to the last
+> segment file. For better performance, we flush the segment files to
+> disk only after a configurable number of messages have been
+> published or a certain amount of time has elapsed. A message is
+> only exposed to the consumers after it is flushed.
 >
->Unlike typical messaging systems, a message stored in Kafka
->doesn’t have an explicit message id. Instead, each message is
->addressed by its logical offset in the log. This avoids the overhead
->of maintaining auxiliary, seek-intensive random-access index
->structures that map the message ids to the actual message
->locations. Note that our message ids are increasing but not
->consecutive. To compute the id of the next message, we have to
->add the length of the current message to its id. From now on, we
->will use message ids and offsets interchangeably.
+> Unlike typical messaging systems, a message stored in Kafka
+> doesn’t have an explicit message id. Instead, each message is
+> addressed by its logical offset in the log. This avoids the overhead
+> of maintaining auxiliary, seek-intensive random-access index
+> structures that map the message ids to the actual message
+> locations. Note that our message ids are increasing but not
+> consecutive. To compute the id of the next message, we have to
+> add the length of the current message to its id. From now on, we
+> will use message ids and offsets interchangeably.
 >
->A consumer always consumes messages from a particular
->partition sequentially. If the consumer acknowledges a particular
->message offset, it implies that the consumer has received all
->messages prior to that offset in the partition. Under the covers, the
->consumer is issuing asynchronous pull requests to the broker to
->have a buffer of data ready for the application to consume. Each
->pull request contains the offset of the message from which the
->consumption begins and an acceptable number of bytes to fetch.
->Each broker keeps in memory a sorted list of offsets, including the
->offset of the first message in every segment file. The broker
->locates the segment file where the requested message resides by
->searching the offset list, and sends the data back to the consumer.
->After a consumer receives a message, it computes the offset of the
->next message to consume and uses it in the next pull request.
+> A consumer always consumes messages from a particular
+> partition sequentially. If the consumer acknowledges a particular
+> message offset, it implies that the consumer has received all
+> messages prior to that offset in the partition. Under the covers, the
+> consumer is issuing asynchronous pull requests to the broker to
+> have a buffer of data ready for the application to consume. Each
+> pull request contains the offset of the message from which the
+> consumption begins and an acceptable number of bytes to fetch.
+> Each broker keeps in memory a sorted list of offsets, including the
+> offset of the first message in every segment file. The broker
+> locates the segment file where the requested message resides by
+> searching the offset list, and sends the data back to the consumer.
+> After a consumer receives a message, it computes the offset of the
+> next message to consume and uses it in the next pull request.
 >
->The layout of an Kafka log and the in-memory index is depicted in
->Figure 2. Each box shows the offset of a message.
+> The layout of an Kafka log and the in-memory index is depicted in
+> Figure 2. Each box shows the offset of a message.
 
 The main difference here is that instead of referring to records with a simple
 index, we refer to it with a logical offset. This is important because the
@@ -361,9 +369,9 @@ While I would love to discuss _testing_, _benchmarking_ and _profiling_, this
 blog post is becoming quite lengthy. So, please look them up on the repository
 provided above.
 
->Note: Some of the identifier names might be different on the repository. I
->have refactored the code sections here to improve readability on various
->devices. Also there are more comments here to make it easier to understand.
+> Note: Some of the identifier names might be different on the repository. I
+> have refactored the code sections here to improve readability on various
+> devices. Also there are more comments here to make it easier to understand.
 
 ### Implementation outline
 
@@ -379,6 +387,7 @@ Each "segment" is backed by a storage file on disk called "store". The offset
 of the first record in a segment is the `base_offset`.
 
 The log is:
+
 - "immutable", since only "append", "read" and "truncate" operations are
   allowed. It is not possible to update or delete records from the middle of
   the log.
@@ -397,6 +406,7 @@ the given read segment. If a segment capable of servicing a read from the given
 offset is found, we read from that segment. If no such segment is found among
 the read segments, we default to the write segment. The following scenarios may
 occur when reading from the write segment in this case:
+
 - The write segment has synced the messages including the message at the given
   offset. In this case the record is read successfully and returned.
 - The write segment hasn't synced the data at the given offset. In this case
@@ -409,6 +419,7 @@ occur when reading from the write segment in this case:
 While the conventional `segmented_log` data structure is quite performant for a
 `commit_log` implementation, it still requires the following properties to hold
 true for the record being appended:
+
 - We have the entire record in memory
 - We know the record bytes' length and record bytes' checksum before the record
   is appended
@@ -439,6 +450,7 @@ records[i+1].position = records[i].position + records[i].record_header.length
 segments[i+1].base_index = segments[i].highest_index
                          = segments[i].index[index.len-1].index + 1
 ```
+
 <p align="center">
 <b>Fig:</b> Data organisation for persisting a <code>segmented_log</code> on a
 <code>*nix</code> file system.
@@ -456,6 +468,7 @@ the store, we write it's corresponding `record_header` (containing the checksum
 and length), position and index as an `index_record` in the segment index.
 
 This provides two quality of life enhancements:
+
 - Allow asynchronous streaming writes, without having to concatenate
   intermediate byte buffers
 - Records are accessed much more easily with easy to use indices
@@ -474,8 +487,9 @@ At the segment level, this requires us to keep a `segment_overflow_capacity`. Al
 segment append operations now use:
 
 ```
-append_threshold = segment_capacity - segment.size + segment_overflow_capacity 
+append_threshold = segment_capacity - segment.size + segment_overflow_capacity
 ```
+
 A good `segment_overflow_capacity` value could be `segment_capacity / 2`.
 
 ### Component implementation
@@ -483,11 +497,12 @@ A good `segment_overflow_capacity` value could be `segment_capacity / 2`.
 We now proceed in a bottom-up fashion to implement the entirety of an "indexed
 segmented log".
 
-#### `AsyncIndexedRead` (_trait_)
+#### `AsyncIndexedRead` (trait)
 
 If we notice carefully, there is a common thread between `Index`, `Segment` and
 even `SegmentedLog` as a whole. Even though they are at different levels in the
 compositional hierarchy, the share some similar _traits_:
+
 - They allow reading items from specific logical indices
 - They have a notion of highest index and lowest index
 - The read operation has to be asynchronous in nature to support both in-memory
@@ -552,7 +567,7 @@ pub trait AsyncIndexedRead {
 }
 ```
 
-#### `AsyncTruncate` (_trait_)
+#### `AsyncTruncate` (trait)
 
 Now each of our components need to support a "truncate" operation, where
 everything sequentially after a certain "mark" is removed. This notion
@@ -575,7 +590,7 @@ pub trait AsyncTruncate {
 }
 ```
 
-#### `AsyncConsume` (_trait_)
+#### `AsyncConsume` (trait)
 
 Next, every abstraction related to storage needs to be safely closed to persist
 data, or be removed all together. We call such operations "consume" operations.
@@ -601,7 +616,7 @@ pub trait AsyncConsume {
 }
 ```
 
-#### `Sizable` (_trait_)
+#### `Sizable` (trait)
 
 Every entity capable of storing data needs a mechanism for measuring it's
 storage footprint i.e size in number of bytes.
@@ -617,7 +632,7 @@ pub trait Sizable {
 }
 ```
 
-#### `Storage` (_trait_)
+#### `Storage` (trait)
 
 Finally, we need a mechanism to read and persist data. This mechanism needs to
 support reads at random positions and appends to the end.
@@ -625,6 +640,7 @@ support reads at random positions and appends to the end.
 "But Arindam!", you interject. "Such a mechanism exists! It's called a file.",
 you say triumphantly. And you wouldn't be wrong. However we have the following
 additional requirements:
+
 - It has to be cross platorm and independent of async rumtimes.
 - It needs to provide a simple API for random reads without having to seek some
   pointer.
@@ -679,12 +695,13 @@ pub trait Storage:
 ```
 
 First, let's unpack what's going on here:
+
 - We support a notion of `Content`, the slice of bytes that is read
 - We also have a notion for `Position` to identify the position of reads and
   appends.
 - First, we have a simple `append_slice()` API the simply appends a given slice
-of bytes to the end of the storage. It returns the position at which slice was
-written, along with the number of bytes written.
+  of bytes to the end of the storage. It returns the position at which slice was
+  written, along with the number of bytes written.
 - Next, we have a `read()` API for reading a slice of bytes of a particular
   `size` from a particular `position`. It returns a `Content`, the associated
   type used to represent slice of bytes that are read from this storage.
@@ -695,7 +712,7 @@ written, along with the number of bytes written.
 - Our storage is also consumable. We inherit from `AsyncConsume` for `close()`
   and `remove()`
 - Finally, our storage has a notion of size with `Sizable`. We use our `Position`
-type for representing sizes.
+  type for representing sizes.
 
 Now, we need to support streaming appends with the existing methods.
 
@@ -714,6 +731,7 @@ Now we need a stream of these. Also note that we need the reading of a single
 item from the stream to also be fallible.
 
 First let's just consider a stream of `XBuf`. Let's call the stream `X`:
+
 ```rust
 X: Stream<Item = XBuf>
 ```
@@ -728,12 +746,13 @@ X: Stream<Item = Result<XBuf, XE>>
 Now our stream needs to be `Unpin` so that it we can safely take a `&mut`
 reference to it in our function.
 
->This blog post: <https://blog.cloudflare.com/pin-and-unpin-in-rust/>, goes into
->detail about why `Pin` and `Unpin` are necessary. Also don't forget to consult
->the standard library documentation:
->- `pin` _module_: <https://doc.rust-lang.org/std/pin/index.html>
->- `Pin` _struct_: <https://doc.rust-lang.org/std/pin/struct.Pin.html>
->- `Unpin` marker _trait_: <https://doc.rust-lang.org/std/marker/trait.Unpin.html>
+> This blog post: <https://blog.cloudflare.com/pin-and-unpin-in-rust/>, goes into
+> detail about why `Pin` and `Unpin` are necessary. Also don't forget to consult
+> the standard library documentation:
+>
+> - `pin` _module_: <https://doc.rust-lang.org/std/pin/index.html>
+> - `Pin` _struct_: <https://doc.rust-lang.org/std/pin/struct.Pin.html>
+> - `Unpin` marker _trait_: <https://doc.rust-lang.org/std/marker/trait.Unpin.html>
 
 Apart from our `Stream` argument, we also need a upper bound on the number of
 bytes to be written. A `Stream` can be infinite, but unfortunaly, computer
@@ -872,6 +891,7 @@ That's reasonable. We append if possible, and propagate the error. Continuing...
 
 So for every byte slice, we add the number of bytes in it to `bytes_written` if
 everything goes well. However, if anything goes wrong:
+
 - We rollback all writes by truncating at the position before all writes,
   stored in `pos`.
 - We return the error encountered.
@@ -1020,8 +1040,8 @@ pub struct StdSeekReadFileStorage {
 }
 ```
 
->`TokioFile` is an alias for `tokio::fs::File`. It's defined in a use directive
->in the source.
+> `TokioFile` is an alias for `tokio::fs::File`. It's defined in a use directive
+> in the source.
 
 We need a buffered writer over our file to avoid hitting the file too many
 times for small writes. Since our workload will largely be composed of small
@@ -1067,6 +1087,7 @@ impl StdSeekReadFileStorage {
 ```
 
 As you can see, for the underlying storage file, we enable the following flags:
+
 - `write`: enables writing to the file
 - `append`: new writes are appended (as opposed to truncating the file before
   writes)
@@ -1236,12 +1257,14 @@ for read only operations open.
 Note that, the read operation is still idempotent as we restore the old file
 position after reading.
 
-#### `Record` (_struct_)
+#### `Record` (struct)
+
 Before we move on to the concept of a `CommitLog`, we need to abstract a much
 more fundamental aspect of our implementation. How do we represent the actual
 "records"?
 
 Let's see... a record in the most general sense needs only two things:
+
 - The actual _value_ to be contained in the record
 - Some _metadata_ about the record
 
@@ -1254,17 +1277,18 @@ pub struct Record<M, T> {
 }
 ```
 
-#### `CommitLog` (_trait_)
+#### `CommitLog` (trait)
 
 Now, with the abstractions presented above, we are ready to express the notion
 of a `CommitLog`. The properties of a `CommitLog` are:
+
 1.  It allows reading records from random indices
 2.  Naturally it has some index bounds
 3.  It allows appending records which may contain a stream of byte slices as it
-  value.
+    value.
 4.  It can be truncated at a specific index.
 5.  It supports `close()` and `remove()` operations to safely persist or remove
-  data respectively.
+    data respectively.
 
 All of these properties have already been represented with the traits above. We
 now use them to define the concept of a `CommitLog`:
@@ -1306,11 +1330,13 @@ Optionally, a `CommitLog` implementation might need to remove some records that
 are older by a certain measure of time. Let's call them _expired_ records. So
 we provide a function for that in case different implementations need it.
 
-#### `Index` (_struct_)
+#### `Index` (struct)
+
 Let's start with our first direct component of our indexed segmented log, the
 `Index`.
 
 First, we need to answer two primary questions:
+
 - What kind of data are we storing?
 - In what layout will we store the said data?
 
@@ -1320,6 +1346,7 @@ positions on storage.
 So this at least has store 2-tuples of the form: `(record_index, record_position)`
 
 Now we need two additional data points:
+
 - Number of bytes in the record i.e `record_length`
 - A checksum of the contents of the record, e.g. crc32
 
@@ -1331,6 +1358,7 @@ So we arrive at this 4-tuple: `(checksum, length, index, position)`
 Let's call this an `IndexRecord`.
 
 Now, an `Index` stores index records sequentially. So:
+
 ```
 index_record[i+1].index = index_record[i].index + 1
 ```
@@ -1349,9 +1377,9 @@ index record will be at a position which is an integral multiple of `IRSZ`:
 ...
 ```
 
->Note: the `position` in the tuple refers to the position of the actual `Record`
->in `Store`. `storage::position` here refers to the position within the `Index`
->file (`Storage` impl).
+> Note: the `position` in the tuple refers to the position of the actual `Record`
+> in `Store`. `storage::position` here refers to the position within the `Index`
+> file (`Storage` impl).
 
 Due to this property, the index can be derived from the position of the record
 itself. The number of records is simply:
@@ -1387,6 +1415,7 @@ So now we can lay out our `IndexRecord` instances on storage as follows:
 ```
 
 Now, number of records is calculated as:
+
 ```
 // number of records in Index
 len(Index) = (size(Index) - size(base_index_marker)) / IRSZ
@@ -1440,6 +1469,7 @@ simple API.
 
 First, let us generalize over both `IndexBaseMarker` and `IndexRecord`. We need
 to formalize an entity with the folowing properties:
+
 - It has a known size at compile time
 - It can be read from and written to any storage
 
@@ -1551,14 +1581,13 @@ impl SizedRecord for IndexRecord {
 }
 ```
 
->[ Quiz 💡]: We dont read or write the `_padding` bytes in our `IndexBaseMarker`
->`SizedRecord` _impl_. So how is it still aligned?
+> [ Quiz 💡]: We dont read or write the `_padding` bytes in our `IndexBaseMarker` `SizedRecord` _impl_. So how is it still aligned?
 >
->[ A ]: Remember that we pass in a _const_ generic parameter `REPR_SIZE` when
->creating a `PersistentSizedRecord`. When writing or reading, we always read
->`REPR_SIZE` number of bytes, regardless of how we serialize or deserialize our
->`IndexRecord` or `IndexBaseMarker`. In this case we just pass a `const usize`
->with value `16`.
+> [ A ]: Remember that we pass in a _const_ generic parameter `REPR_SIZE` when
+> creating a `PersistentSizedRecord`. When writing or reading, we always read
+> `REPR_SIZE` number of bytes, regardless of how we serialize or deserialize our
+> `IndexRecord` or `IndexBaseMarker`. In this case we just pass a `const usize`
+> with value `16`.
 
 We also declare some useful constants to keep things consistent:
 
@@ -1585,6 +1614,7 @@ Let's assume that `Record` sizes are `1KB` on average.
 Let's assume that `Segment` files are `1GB` on average.
 
 So we can calculate as follows:
+
 ```
             1GB Segment == pow(10, 6) * 1KB Record
 
@@ -1634,21 +1664,21 @@ to decide which `Index` instances to cache based on access patterns.
 For instance, we could maintain an `LRUCache` of `Index` instances that are
 currently cached. When an `Index` outside of the `LRUCache` is accessed, we add
 it to the `LRUCache`. When an `Index` from within the `LRUCache` is accessed,
-we update the `LRUCache` accordingly.  The `LRUCache` will have some maximum
+we update the `LRUCache` accordingly. The `LRUCache` will have some maximum
 capacity, which decides the maximum number of `Index` instances that can be
 cached at the same time. We could replace `LRUCache` with other kinds of cache
 (e.g. `LFUCache`) for different performance characteristics. The `Index` files
 are still persisted on storage so there is no loss of data.
 
->I wanted this implementation to handle `1TB` of data on a [Raspberry Pi
->3B](https://www.raspberrypi.com/products/raspberry-pi-3-model-b/).
->Unfortunately, it has only `1GB` RAM. However, if we enforce a limit that only
->`10` `Index` instances are cached at a time (e.g. by setting the `LRUCache`
->max capacity to `10`), that would be a `160MB` overhead. That would make this
->implementation usable on an RPi 3B, albeit at the cost of some latency.
+> I wanted this implementation to handle `1TB` of data on a [Raspberry Pi
+> 3B](https://www.raspberrypi.com/products/raspberry-pi-3-model-b/).
+> Unfortunately, it has only `1GB` RAM. However, if we enforce a limit that only
+> `10` `Index` instances are cached at a time (e.g. by setting the `LRUCache`
+> max capacity to `10`), that would be a `160MB` overhead. That would make this
+> implementation usable on an RPi 3B, albeit at the cost of some latency.
 >
->For storage, I can connect a 1TB external hard disk to the RPi 3B and proceed
->as usual.
+> For storage, I can connect a 1TB external hard disk to the RPi 3B and proceed
+> as usual.
 
 Now, let's define some utilities for constructing `Index` instances.
 
@@ -2078,8 +2108,7 @@ impl<S: Storage, Idx> AsyncConsume for Index<S, Idx> {
 Notice how all of the primary functions of our `Index` are supported by the
 _traits_ we wrote earlier.
 
-
-#### `Store` (_struct_)
+#### `Store` (struct)
 
 Now that we have our `Index` ready, we can get started with our backing
 `Store`. `Store` is responsible for persiting the record data to `Storage`.
@@ -2098,10 +2127,10 @@ pub struct RecordHeader {
 }
 ```
 
->In a previous index-less segmented-log implementation, `RecordHeader`
->instances used to be persisted right before every record on the `Store`. Once
->we moved record `position`, `checksum` and `length` metadata to the `Index`,
->it was no longer necessary to persist the `RecordHeader`.
+> In a previous index-less segmented-log implementation, `RecordHeader`
+> instances used to be persisted right before every record on the `Store`. Once
+> we moved record `position`, `checksum` and `length` metadata to the `Index`,
+> it was no longer necessary to persist the `RecordHeader`.
 
 We only need a constructor for `RecordHeader`:
 
@@ -2285,13 +2314,14 @@ impl<S: Storage, H> Sizable for Store<S, H> {
 
 Now that we have our `Store` and `Index` ready, we can move on to our `Segment`.
 
-#### `Segment` (_struct_)
+#### `Segment` (struct)
 
 As we have discussed before, a `Segment` is the smallest unit in a
 `SegmentedLog` that can act as a `CommitLog`.
 
 In our implementation a `Segment` comprises of an `Index` and `Store`. Here's
 how it handles _reads_ and _appends_:
+
 - For _reads_, it first looks up the `IndexRecord` in `Index` corresponding to the
   given record index. With the `position`, `length` and `checksum` present in
   the `IndexRecord`, it reads the `Record` serialized bytes from the `Store`.
@@ -2414,10 +2444,11 @@ pub mod commit_log {
 ```
 
 Here's what I want to highlight:
+
 - We create a _struct_ `MetaWithIdx` to use as the metadata value used for
-`commit_log::Record`.
+  `commit_log::Record`.
 - Next we create a _type alias_ `commit_log::segmented_log::Record` which uses
-the `MetaWithIdx` struct for metadata.
+  the `MetaWithIdx` struct for metadata.
 
 Why am I saying all this? Well I did need to clarify the module structure a
 bit, but there's another reason.
@@ -2525,6 +2556,7 @@ the byte layout for serialized records:
 ```
 
 As you can see, serialized record has the following parts:
+
 1. `metadata_len`: The number of bytes required to represent serialized
    `metadata`. Stored as `u32` in `4` bytes.
 2. `metadata`: The metadata associated with the record. Stored in
@@ -2657,32 +2689,33 @@ where
 That looks more involved than it actually is. Still, let's go through it once:
 
 - `append()`
-    - Validate the append index, and obtain it if not provided.
-    - Serialize the metadata, specifically the `MetaWithIdx` instance in the
-      `Record`
-    - Find the length of the serialized `metadata_bytes` as
-      `metadata_bytes_len`
-    - Serialze the `metadata_bytes_len` to `metadata_bytes_len_bytes`
-    - Create a sum type to generalize over serialized byte slices and record
-      value byte slices
-    - Chain the byte slices in a stream in the order
-      `[metadata_bytes_len_bytes, metadata_bytes, ...record.value]`
-    - Call `append_serialized_record()` on the final chained stream of slices
+
+  - Validate the append index, and obtain it if not provided.
+  - Serialize the metadata, specifically the `MetaWithIdx` instance in the
+    `Record`
+  - Find the length of the serialized `metadata_bytes` as
+    `metadata_bytes_len`
+  - Serialze the `metadata_bytes_len` to `metadata_bytes_len_bytes`
+  - Create a sum type to generalize over serialized byte slices and record
+    value byte slices
+  - Chain the byte slices in a stream in the order
+    `[metadata_bytes_len_bytes, metadata_bytes, ...record.value]`
+  - Call `append_serialized_record()` on the final chained stream of slices
 
 - `append_serialized_record()`
-    - Copy current `highest_index` to `write_index`
-    - Obtain the `remaining_store_capacity` using the expression
-      `config.max_store_size - store.size()`
-    - `append_threshold` is then the remaining capacity along with overflow
-      bytes allowed, i.e. `remaining_store_capacity +
-      config.max_store_overflow`
-    - Append the serialized stream of slices to the underlying `Store` instance
-      with the computed `append_threshold`
-    - Using the `(position, index_record)` obtained from `store.append()`, we
-      create the `IndexRecord`
-    - Append the `IndexRecord` to the underlying `Index` instance.
-    - Return the `index` at which the serialized record was written, (return
-      `write_index`)
+  - Copy current `highest_index` to `write_index`
+  - Obtain the `remaining_store_capacity` using the expression
+    `config.max_store_size - store.size()`
+  - `append_threshold` is then the remaining capacity along with overflow
+    bytes allowed, i.e. `remaining_store_capacity +
+config.max_store_overflow`
+  - Append the serialized stream of slices to the underlying `Store` instance
+    with the computed `append_threshold`
+  - Using the `(position, index_record)` obtained from `store.append()`, we
+    create the `IndexRecord`
+  - Append the `IndexRecord` to the underlying `Index` instance.
+  - Return the `index` at which the serialized record was written, (return
+    `write_index`)
 
 Next, we implement the `AsyncIndexedRead` _trait_ for `Segment` using the same
 byte layout:
@@ -2761,6 +2794,7 @@ where
 ```
 
 Again, let's summarize, what's happening above:
+
 - Read the `IndexRecord` at the given index `idx` from the underlying `Index`
   instance
 - Read the serialized record bytes using the `IndexRecord` from the underlying
@@ -2769,8 +2803,8 @@ Again, let's summarize, what's happening above:
   `metadata` and record `value`
 - Returns a `Record` instance containing the read `metadata` and `value`.
 
->`Segment::append` and the `AsyncIndexedRead` _trait impl_ form the majority of
->the responsiblities of a `Segment`.
+> `Segment::append` and the `AsyncIndexedRead` _trait impl_ form the majority of
+> the responsiblities of a `Segment`.
 
 Next, we need to provide an API for managing `Index` caching on `Segment`
 instances:
@@ -2801,6 +2835,7 @@ As you can see, it simply exposes the caching api of the underlying `Index`.
 When constructing our `Segment`, most of the times we will need to read
 the `Segment` with a given `base_index` from some storage media.
 Ideally we want a mechanism that allows us to:
+
 - Find the base indices of all the segments stored in some storage media
 - Given a `base_index`, get the `Storage` _trait_ impl. instances associated
   with the `Segment` having that `base_index`
@@ -2862,17 +2897,17 @@ where
     /// whether to cache the Segment index at initialization.
     ///
     /// This function uses the SegmentStorageProvider ref to obtain the
-    /// SegmentStorage associated with the Segment having the given 
+    /// SegmentStorage associated with the Segment having the given
     /// base_index. Next, it creates the Segment using the obtained
     /// SegmentStorage and base_index.
     ///
     /// The cache_index_records_flag flag decides whether to read all the
-    /// IndexRecord instances stored in at the associated Index at 
+    /// IndexRecord instances stored in at the associated Index at
     /// the start. It behaves as follows:
-    /// - true: Read all the IndexRecord instances into the cached vector 
+    /// - true: Read all the IndexRecord instances into the cached vector
     /// of IndexRecord instances in the Index
-    /// - false: No IndexRecord instances are read at this moment and the 
-    /// Index is not cached. The Index can later be cached with the 
+    /// - false: No IndexRecord instances are read at this moment and the
+    /// Index is not cached. The Index can later be cached with the
     /// Segment's index caching API.
     ///
     /// Returns the created Segment instance.
@@ -2907,6 +2942,7 @@ where
     }
 }
 ```
+
 Next, we utilize the `SegmentStorageProvider` to provide an API to flush data
 written in a `Segment` to the underlying storage media. The main idea behind
 flushing is to close and reopen the underlying storage handles. This method is
@@ -2962,6 +2998,7 @@ where
     }
 }
 ```
+
 Finally, we implement `AsyncTruncate` and `AsyncConsume` for our `Segment`:
 
 ```rust
@@ -3032,7 +3069,7 @@ where
 }
 ```
 
-#### `SegmentedLog` (_struct_)
+#### `SegmentedLog` (struct)
 
 With our underlying components in place, we are ready to encapsulate the
 _segmented-log_ data-structure.
@@ -3055,7 +3092,7 @@ pub struct Config<Idx, Size> {
     pub segment_config: segment::Config<Size>,
 
     /// Index to be used as the base_index of the first Segment,
-    /// in case no Segment instances are already associated 
+    /// in case no Segment instances are already associated
     /// with the SegmentedLog in question.
     pub initial_index: Idx,
 }
@@ -3084,6 +3121,7 @@ pub struct SegmentedLog<S, M, H, Idx, Size, SERP, SSP, C> {
 ```
 
 The generic parameters are as follows:
+
 - `S`: `Storage` _trait_ impl. to be used as storage foor underlying `Segment` instances
 - `M`: Metadata to be used as parameter to `MetaWithIdx` in every `Record`
 - `Idx`: Unsigned integer type to be used as record indices
@@ -3268,6 +3306,7 @@ where
 ```
 
 Let's summarize the above method:
+
 1. We obtain the base indices of all the `Segment` instances persisted in the
    given `SegmentStorageProvider` instance in `segment_base_indices`.
 2. We split the read base indices into `read_segment_base_indices` and
@@ -3279,8 +3318,8 @@ Let's summarize the above method:
 3. We create the _read_ `Segment` instances and the _write_ `Segment` using
    their appropriate base indices. _Read_ `Segment` instances are cached only
    if `num_index_cached_read_segments` limit is not set. If this limit is set,
-       we don't inded-cache _read_ `Segment` instances in this constructor.
-       Instead we index-cache them when they are referenced.
+   we don't inded-cache _read_ `Segment` instances in this constructor.
+   Instead we index-cache them when they are referenced.
 4. We store the _read_ `Segment` instances in a vector `read_segments`.
 5. Write `Segment` is always cached.
 6. We creae a `segments_with_cached_index` `Cache` instance to keep track of
@@ -3427,7 +3466,6 @@ where
 ```
 
 Now we can implement `AsyncIndexedRead` for our `SegmentedLog`:
-
 
 ```rust
 #[async_trait(?Send)]
@@ -3678,6 +3716,7 @@ where
 
 There are some other methods to read `Record` instances efficiently for
 different workloads:
+
 - `read_seq`: Sequentially read records in the segmented-log by sequentially
   iterating over the underlying segments. Avoids segment search overhead.
 - `read_seq_exclusive`: `read_seq` with caching behaviour
@@ -3691,6 +3730,7 @@ Read them on the repository in the `SegmentedLog`
 
 Next, we need to prepare for our `SegmentedLog::append` implementation. The
 basic outline of `append()` is as follows:
+
 - If current write segment is maxed, rotate write segment to a read segment,
   and create a new write segment that start off where it left.
 - Append the record to the write segment
@@ -3762,10 +3802,10 @@ where
 }
 ```
 
->A previous implementation used to directly close and re-open the write segment
->to flush it. This led to readng the index records multiple times when rotating
->segments. The new `Segment::flush` API avoids doing that, making the current
->`rotate_new_write_segment` implementation more efficient.
+> A previous implementation used to directly close and re-open the write segment
+> to flush it. This led to readng the index records multiple times when rotating
+> segments. The new `Segment::flush` API avoids doing that, making the current
+> `rotate_new_write_segment` implementation more efficient.
 
 With this we are aready to implement `CommitLog::append` for our `SegmentedLog`:
 
@@ -3887,6 +3927,7 @@ where
 ```
 
 Let's summarize what is going on above:
+
 - Flush the write segment
 - Make a copy of the current `highest_index` as `next_index`. It is to be used
   as the `base_index` of the next _write_ segment to be created.
@@ -3978,6 +4019,7 @@ where
 ```
 
 Let's summarize what is going on above:
+
 - If the given index is out of bounds, error out
 - If the given index is contained withing the write segment, truncate the write
   segment and call it a day.
@@ -4028,11 +4070,12 @@ where
 ### An example application using `SegmentedLog`
 
 Let's summarize what we want to achieve here:
+
 - A HTTP API server that provides RPC like endpoints for a commit log API
 - Providing on disk persitence to the underlying commit log using
   [`tokio::fs`](https://docs.rs/tokio/latest/tokio/fs/index.html) based
   `Storage` and `SegmentStorageProvider` _impls_.
-  
+
 Recall that we already wrote a `Storage` _impl_ using `tokios::fs` earlier
 [here](#a-sample-storage-impl). Now we need a `SegmentStorageProvider` _impl_.
 However, could we do even better?
@@ -4042,7 +4085,7 @@ store and index files will remain largely the same, even across different async
 runtimes and file implementations. What if we could also abstract that
 complexity away?
 
-#### `PathAddressedStorageProvider` (_trait_) 
+#### `PathAddressedStorageProvider` (trait)
 
 A `PathAddressedStorageProvider` obtains `Storage` _impl_ instances _adrressed
 by_ paths. We don't specify at this point where those paths belong (whether on
@@ -4060,7 +4103,7 @@ where
 }
 ```
 
-#### `DiskBackedSegmentStorageProvider` (_struct_)
+#### `DiskBackedSegmentStorageProvider` (struct)
 
 `DiskBackedSegmentStorageProvider` uses a `PathAddressedStorageProvider` impl.
 instance to implement `SegmentStorageProvider`. The
@@ -4131,9 +4174,9 @@ We maintain a mostly flat hierarchy for storing our files:
 ```
 storage_directory/
 ├─ <segment_0_base_index>.store
-├─ <segment_0_base_index>.store 
+├─ <segment_0_base_index>.store
 ├─ <segment_1_base_index>.store
-├─ <segment_1_base_index>.store 
+├─ <segment_1_base_index>.store
 ...
 ```
 
@@ -4197,7 +4240,7 @@ where
 
 With these utilities in place we can proceed with our commit log server example.
 
-#### `laminarmq-tokio-commit-log-server` (_crate_)
+#### `laminarmq-tokio-commit-log-server` (crate)
 
 A simple persistent commit log server using the tokio runtime.
 
@@ -4214,8 +4257,8 @@ This server exposes the following HTTP endpoints:
 .route("/records", post(append))            // append a new record at the end of the
                                             // commit-log
 
-.route("/rpc/truncate", post(truncate))     // truncate the commit log 
-                                            // expects JSON: 
+.route("/rpc/truncate", post(truncate))     // truncate the commit log
+                                            // expects JSON:
                                             // { "truncate_index": <idx: number> }
                                             // records starting from truncate_index
                                             // are removed
@@ -4232,9 +4275,10 @@ This server exposes the following HTTP endpoints:
 
 As you can see, we divide the responsiblity of the commit-log server between
 two halves:
-- __axum client facing web request handler__: Responsible for routing and parsing
+
+- **axum client facing web request handler**: Responsible for routing and parsing
   HTTP requests
-- __commit-log request processing__: Uses an on disk persisted `CommitLog` _impl_
+- **commit-log request processing**: Uses an on disk persisted `CommitLog` _impl_
   instance to process different commit-log API requests
 
 In order to process commit-log requests we run a dedicated request handler loop
@@ -4290,8 +4334,8 @@ pub enum AppResponse {
 }
 ```
 
->Why did we use _structs_ for certain _enum_ values? Well, we will be using
->those _structs_ later for parsing json requests in `axum` routes.
+> Why did we use _structs_ for certain _enum_ values? Well, we will be using
+> those _structs_ later for parsing json requests in `axum` routes.
 
 Now recall that we will be communicating between the axum server task and the
 commit-log request processing task. Let's define a `Message` type to encode the
@@ -4439,16 +4483,16 @@ where
 }
 ```
 
->Notice that we are directly passing in
->[`Body`](https://docs.rs/hyper/0.14.27/hyper/body/struct.Body.html) to our
->`CommitLog::append()` without using
->[`to_bytes()`](https://docs.rs/hyper/0.14.27/hyper/body/fn.to_bytes.html).
->This is possible because `Body` implements `Stream<Result<Bytes, _>>` which
->satisfies the trait bound `Stream<Result<Deref<Target = [u8]>, _>>`. This
->allows us to write the entire request body in a streaming manner without
->concatenating the intermediate (packet) buffers. (See
->[`CommitLog`](#commitlog-trait) and [`Storage`](#storage-trait) for a
->refresher.)
+> Notice that we are directly passing in
+> [`Body`](https://docs.rs/hyper/0.14.27/hyper/body/struct.Body.html) to our
+> `CommitLog::append()` without using
+> [`to_bytes()`](https://docs.rs/hyper/0.14.27/hyper/body/fn.to_bytes.html).
+> This is possible because `Body` implements `Stream<Result<Bytes, _>>` which
+> satisfies the trait bound `Stream<Result<Deref<Target = [u8]>, _>>`. This
+> allows us to write the entire request body in a streaming manner without
+> concatenating the intermediate (packet) buffers. (See
+> [`CommitLog`](#commitlog-trait) and [`Storage`](#storage-trait) for a
+> refresher.)
 
 The above implementation is fairly straightforward: there is a one-to-one
 mapping between the request, the commit-log methods and the responses.
@@ -4637,6 +4681,7 @@ from this function. They allow us to `join()` the spawned thread and send
 
 Let's now move on to the client facing end of our commit-log server. This side
 has three major responsiblities:
+
 - Parse HTTP Requests to appropriate `AppRequest` instances using the request
   path and body
 - Send a `Message::Connection` containing the parsed `AppRequest` to the
@@ -4835,7 +4880,6 @@ async fn main() {
 Feel free to checkout the remaining sections of the commit-log server implementation
 [here](https://github.com/arindas/laminarmq/tree/examples/laminarmq-tokio-commit-log-server/src/main.rs)
 
-
 ## Closing notes
 
 This blog discussed a segmented-log implementation right from the theoretical
@@ -4853,11 +4897,11 @@ We utilized the following resources as references for this blog post:
 {% references() %}
 
 Lamport, Leslie. "Time, clocks, and the ordering of events in a distributed
-system." *Concurrency: the Works of Leslie Lamport.* 2019. 179-196.
+system." _Concurrency: the Works of Leslie Lamport._ 2019. 179-196.
 [https://dl.acm.org/doi/pdf/10.1145/359545.359563](https://dl.acm.org/doi/pdf/10.1145/359545.359563)
 
 Jay Kreps. "The Log: What every software engineer should know about real-time
-data's unifying abstraction." *LinkedIn engineering blog.* 2013.
+data's unifying abstraction." _LinkedIn engineering blog._ 2013.
 <https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying>
 
 Kreps, Jay, Neha Narkhede, and Jun Rao. "Kafka: A distributed messaging system
@@ -4865,7 +4909,3 @@ for log processing." _Proceedings of the NetDB._ Vol. 11. No. 2011. 2011.
 <https://pages.cs.wisc.edu/~akella/CS744/F17/838-CloudPapers/Kafka.pdf>
 
 {% end %}
-
-[^1]: A lamport clock is a logical counter to establish causality between two
-events. Since it's decoupled from wall-clock time, it's used in
-distributed-systems for ordering events.
