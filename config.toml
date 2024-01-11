@@ -63,6 +63,7 @@ menu = [
     { name = "archive", url = "archive/" },
     { name = "tags", url = "tags/" },
     { name = "projects", url = "projects/" },
+    { name = "about", url = "about/" },
 ]
 
 # The RSS icon will be shown if (1) it's enabled and (2) the following variable is set to true.
