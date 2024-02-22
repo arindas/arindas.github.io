@@ -641,7 +641,7 @@ support reads at random positions and appends to the end.
 you say triumphantly. And you wouldn't be wrong. However we have the following
 additional requirements:
 
-- It has to be cross platorm and independent of async rumtimes.
+- It has to be cross platorm and independent of async runtimes.
 - It needs to provide a simple API for random reads without having to seek some
   pointer.
 - It needs to support appending a stream of byte slices.
