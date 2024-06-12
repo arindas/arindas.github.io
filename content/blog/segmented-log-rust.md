@@ -4245,7 +4245,7 @@ With these utilities in place we can proceed with our commit log server example.
 A simple persistent commit log server using the tokio runtime.
 
 The code for this example can be found
-[here](https://github.com/arindas/laminarmq/tree/examples/laminarmq-tokio-commit-log-server).
+[here](https://github.com/arindas/laminarmq/tree/main/examples/laminarmq-tokio-commit-log-server).
 
 This server exposes the following HTTP endpoints:
 
@@ -4418,7 +4418,7 @@ Here `CL` is a type implementing the `CommitLog` _trait_.
 
 There's also an error type and a few aliases to make life easier. Feel free to
 look them up in the
-[repository](https://github.com/arindas/laminarmq/blob/examples/laminarmq-tokio-commit-log-server/src/main.rs).
+[repository](https://github.com/arindas/laminarmq/blob/main/examples/laminarmq-tokio-commit-log-server/main.rs#L398).
 
 Next, we define our request handler that maps every request to it's
 corresponding response using the `CommitLog` _impl_ instance:
@@ -4730,7 +4730,7 @@ impl AppState {
 
 Our route handler functions will be mostly identical. I will show the read and
 append route handlers here. Feel free to read the rest of the route handlers
-[here](https://github.com/arindas/laminarmq/blob/examples/laminarmq-tokio-commit-log-server/src/main.rs)
+[here](https://github.com/arindas/laminarmq/blob/main/examples/laminarmq-tokio-commit-log-server/main.rs#L258)
 
 ```rust
 // ...
@@ -4878,7 +4878,7 @@ async fn main() {
 ```
 
 Feel free to checkout the remaining sections of the commit-log server implementation
-[here](https://github.com/arindas/laminarmq/tree/examples/laminarmq-tokio-commit-log-server/src/main.rs)
+[here](https://github.com/arindas/laminarmq/blob/main/examples/laminarmq-tokio-commit-log-server/main.rs)
 
 ## Closing notes
 
