@@ -7,7 +7,9 @@ path = "about"
 show_reading_time = false
 +++
 
-Hello, I am Arindam Das! I am a software engineer based in India in the MLOPs space.
+Hello, I am Arindam Das!
+
+I am a software engineer based in India in the `MLOPs` space.
 
 Here's my [resume](https://github.com/arindas/resume/releases/latest/download/arindas-resume.pdf).
 
