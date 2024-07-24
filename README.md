@@ -12,8 +12,9 @@
 </p>
 
 <p align="center">
-  arindas' personal website and blog for ruminating on their place and purpose in the tech world.
+  <i>arindas'</i> personal website and blog.
 </p>
 
 ## License
+
 This repository is licensed under the [MIT License](./LICENSE).
