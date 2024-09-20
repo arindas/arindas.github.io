@@ -718,7 +718,7 @@ Now, we need to support streaming appends with the existing methods.
 
 Let's begin by asking ourselves, what exactly are the arguments here?
 
-A stream of byte slice. How do we represent that?
+A stream of byte slices. How do we represent that?
 
 Let's start with just a slice. Let's call it `XBuf`. The bound for that is
 simple enough:
