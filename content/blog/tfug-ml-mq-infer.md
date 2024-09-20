@@ -33,10 +33,12 @@ We see the word "queue" in it, why?
 A queue is a first in first out data-structure for storing a set of elements.
 
 However this definition doesn't tell us anything about:
+
 - How and where the elements are stored (in-memory, hard disk etc.)
 - Who can access this queue from where
 
 In the 21st century, we have the following additional requirements:
+
 - It has to be accessible over the internet over well known protocols (HTTP,
   gRPC etc.)
 - It might need to implement role base access control (RBAC)
@@ -45,8 +47,8 @@ In the 21st century, we have the following additional requirements:
 - All replicas need to be consistent with each other
 - It has to support multiple channels for different types of elements
 - It has to be reasonably fast
-- We can't be bothered about these requirements. We have business 
-requirements to worry about
+- We can't be bothered about these requirements. We have business
+  requirements to worry about
 
 Message queues are queues of "message" elements, and they
 fulfil the above requirements.
@@ -118,27 +120,30 @@ In the above figure, we have to stages of computation `stage #a` and `stage #b`.
 There are two sets of servers for hosting these stages of computation. These two
 stages are connected to each other with message queue topics. This architecture
 works as follows:
+
 - Client pushes a message containing the input request to be processed into
-the first topic `topic_a_in`
+  the first topic `topic_a_in`
 - The `stage #a` server pulls in messages from the `topic_a_in` topic, processes
-it and writes the intermediate result to `topic_a_out_b_in` topic.
+  it and writes the intermediate result to `topic_a_out_b_in` topic.
 - The `stage #b` server pulls in intermeidate processed results from the
-`topic_a_out_b_in` topic, processes them and writes the final output to
-`topic_b_out` topic.
+  `topic_a_out_b_in` topic, processes them and writes the final output to
+  `topic_b_out` topic.
 - The client reads the results from the `topic_b_out` topic.
 
 You may also think of the `stage #a` and `stage #b` as two functions $a(x)$ and
 $b(x)$, and we are essentially computing the composite function $(b \circ a)(x)
 = b(a(x))$ where $x$ is the client input request. The difference being:
+
 - The values are passed into the "function"(s) over the network via message
-queues
+  queues
 - There is a queue of values $X = \lbrace x_0, x_1, ...\rbrace $ to process.
 - The invocation at every stage can be done in parallel with the stage replicas.
-The message queue is responsible for adequately load balancing the elements from
-the queue among all the replicas.
+  The message queue is responsible for adequately load balancing the elements from
+  the queue among all the replicas.
 
 Now in order to see, how this load balancing is done in practice, let's take a
 look at two popular message queuing solutions:
+
 - Apache Kafka
 - Google Cloud Pub/Sub
 
@@ -171,6 +176,7 @@ There are two kinds of clients for Apache Kafka: Producers and Consumers
 In our multistage computation example, each stage has input request and output
 responses. Let's assign a particular topic to a particular stage. To achieve
 horizontal scaling we do the following:
+
 - We make multiple partitions under the topic for this stage.
 - We write input requests to the topic. The partitioner load balances the
   messages to the partitions under this topic.
@@ -191,15 +197,15 @@ Message published to the topic are load balanced across all the subscriptions.
 ### Primary distinction between synchronous and asynchronous request processing
 
 - Synchronous model: Requests are delivered to the server as soon as they arrive.
-If the server has enough resources to handle the requests, they are processed.
-Otherwise they are either delayed or dropped.
+  If the server has enough resources to handle the requests, they are processed.
+  Otherwise they are either delayed or dropped.
 - Asynchronous model: Requests are buffered as soon as they arrive. Then the
-server pulls a request from the buffered queue of requests when it has enough
-resources to handle the request. This improved the success rate of requests
-being handled successfully.
+  server pulls a request from the buffered queue of requests when it has enough
+  resources to handle the request. This improved the success rate of requests
+  being handled successfully.
 
->Some also call this event driven architecture, with the individual messages
->being "event"(s)
+> Some also call this event driven architecture, with the individual messages
+> being "event"(s)
 
 ## Why use message queues instead of Databases?
 
@@ -211,9 +217,6 @@ You can indeed do this, some production systems use databases instead of message
 queues in this manner.
 
 However message queues have some advantages over traditional data bases:
-- Message queues use different data structures for storage and indexing. Message
-queues use `segmented_log`(s), while traditional relational databases use 
-data-structures from the `B-Tree` family
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/segmented-log.drawio.png" alt="segmented-log" />
@@ -222,34 +225,37 @@ data-structures from the `B-Tree` family
 <b>Fig:</b> The <code>segmented-log</code> data-structure.
 </p>
 
-- `segmented_log` and `B-Tree` comparison continued ...
+- Message queues use different data structures for storage and indexing. Message
+  queues use `segmented_log`(s), while traditional relational databases use
+  data-structures from the `B-Tree` family
+- `segmented_log` and `B-Tree` performance comparison:
   - `segmented_log`(s) have $O(1)$ writes on average. `B-Tree`(s) have $O(\log n)$
-  insertions.
+    insertions.
     - In segmented_log appending to the `write_segment` is $O(1)$
-    - When rotating the `write_segment`, `vector::push_back` on vector of read 
-    segments is $O(1)$ on average, $O(|segments|)$ at worst.
+    - When rotating the `write_segment`, `vector::push_back` on vector of read
+      segments is $O(1)$ on average, $O(|segments|)$ at worst.
     - Modern vector implementations ensure that the worst case of having
-    to copy all the elements when pushing back to end of the vector is very
-    rare. They may employ the following approaches:
+      to copy all the elements when pushing back to end of the vector is very
+      rare. They may employ the following approaches:
       - Exponential memory reservation when reserving more memory
       - Maintaining multiple disjoint contiguous slabs of memory to avoid
-      having to copy elements when reserving more memory. New elements are
-      written to the last memory slab. This reduces worst case for push_back
-      to almost $O(1)$ on average. Reads are still $O(1)$ since the memory 
-      region for any index can be easily computed as all elements have same 
-      size and the regions are identical in size.
+        having to copy elements when reserving more memory. New elements are
+        written to the last memory slab. This reduces worst case for push_back
+        to almost $O(1)$ on average. Reads are still $O(1)$ since the memory
+        region for any index can be easily computed as all elements have same
+        size and the regions are identical in size.
   - `segmented_log`(s) can guarantee $O(\log |segments|)$ reads while B-Trees have
-  $O(\log n)$ reads, where $n$ is the total number of records and $segments$ is the
-  set of segments in the segmented_log. (Usually, $\frac{n}{|segments|} >= 1000$)
+    $O(\log n)$ reads, where $n$ is the total number of records and $segments$ is the
+    set of segments in the segmented_log. (Usually, $\frac{n}{|segments|} >= 1000$)
     - This is possible since the segments are sorted by indices and given a record
-    index, we can perform a binary search to check which segment has the record
-    with the index, which would be $O(\log |segments|)$. Reading at a specific index
-    from a segment is $O(1)$.
+      index, we can perform a binary search to check which segment has the record
+      with the index, which would be $O(\log |segments|)$. Reading at a specific index
+      from a segment is $O(1)$.
     - If we can guarantee constant record size (with padding) and constant max
-    number of records per segment, we can provide $O(1)$ reads for `segmented_log`(s).
-    This would be possible because determining which segment has the index would
-    also be a $O(1)$ in this case.
-    
+      number of records per segment, we can provide $O(1)$ reads for `segmented_log`(s).
+      This would be possible because determining which segment has the index would
+      also be a $O(1)$ in this case.
+
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/b-tree.png" alt="B-Tree" />
 </p>
@@ -305,30 +311,30 @@ consider the following case study.
 
 ## Case Study: Plant medicine effectiveness on Crops
 
->An agricultural pharmacy company has come up with a new drug to cure various
->plant diseases. Now, they wish to measure the effectiveness of their medicine.
->They want to quantitatively analyze if the medicine speeds up the healing
->process in plants.
+> An agricultural pharmacy company has come up with a new drug to cure various
+> plant diseases. Now, they wish to measure the effectiveness of their medicine.
+> They want to quantitatively analyze if the medicine speeds up the healing
+> process in plants.
 >
->In order to to do this, the company partners with a farm owner to test out the
->medicine on their crops. They isolate the farm into two areas, the control area
->where no medicine is used and the active area where the newly developed
->medicine is tested out. They decide on a uniform medicine distribution
->quantity, let's say 120 ml/sqft.
+> In order to to do this, the company partners with a farm owner to test out the
+> medicine on their crops. They isolate the farm into two areas, the control area
+> where no medicine is used and the active area where the newly developed
+> medicine is tested out. They decide on a uniform medicine distribution
+> quantity, let's say 120 ml/sqft.
 >
->Now they employ a fleet of drones to regularly take images of the plants in the
->farm in both the control and active areas to keep track of the health of the
->plants. The drones take photographs of the plants in the farm at regular
->distances to cover the entire farm. The trajectory of the drones are
->preprogrammed in such way that each drones always take photographs at some
->specific positions (marked by GPS) and each photograph contains a maximum of 20
->leaves. The drones take photographs at regular time intervals (e.g daily)
+> Now they employ a fleet of drones to regularly take images of the plants in the
+> farm in both the control and active areas to keep track of the health of the
+> plants. The drones take photographs of the plants in the farm at regular
+> distances to cover the entire farm. The trajectory of the drones are
+> preprogrammed in such way that each drones always take photographs at some
+> specific positions (marked by GPS) and each photograph contains a maximum of 20
+> leaves. The drones take photographs at regular time intervals (e.g daily)
 >
->(The plants are in a green house. They don't move around a lot due to absence
->of wind)
+> (The plants are in a green house. They don't move around a lot due to absence
+> of wind)
 >
->The Machine Learning engineers are to analyze the photographs taken by the
->drones and measure the effect of the medicine on the leaves.
+> The Machine Learning engineers are to analyze the photographs taken by the
+> drones and measure the effect of the medicine on the leaves.
 
 Now take a look at this photograph:
 
@@ -351,9 +357,10 @@ However that is an ideal case. It is only possible if you have the required
 datasets.
 
 The machine learning engineers only have the following datasets:
+
 - Leaf object detection dataset
 - Disease grade classification for 5 diseases (the grades correspond to
-severity)
+  severity)
 
 There are no sufficiently large annotated semantic segmentation dataset that
 can be used for production purposes. (Let's say, for this scenario.)
@@ -361,12 +368,13 @@ can be used for production purposes. (Let's say, for this scenario.)
 ### Solution Architecture
 
 The machine learning engineers provide the following models:
+
 - A leaf object detector
 - 5 disease grade classifier models. Each disease grade classifier models has 4
   classes.
 
 The software engineers design the solution with a suite of micro-services and
-drone controllers which communicate with each other using the message queue. 
+drone controllers which communicate with each other using the message queue.
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/arindas/tfug-ml-mq-infer/main/assets/plant-pharma-case-study-solution-architecture.drawio.png" alt="plant-pharma-case-study-solution-architecture" />
@@ -374,6 +382,15 @@ drone controllers which communicate with each other using the message queue.
 <p align="center" class="caption">
 <b>Fig:</b> Solution Architecture diagram.
 </p>
+
+The main steps are as follows:
+
+- Leaf obj detection on plant image
+- Leaf bounding box detection
+- Leaf image Crop from detected bounding boxes
+- Disease grade classification on individual cropped leaf images
+- Store prediction in DB
+- Aggregate Queries for insights
 
 The various components of the system are described in the following sections.
 
@@ -390,15 +407,14 @@ s3://${STORAGE_BUCKET}/${position_id}/${date}/image.png
 Next the drone controller produces a message on the "drone_image" topic. The
 message simply contains the S3 image object path.
 
-(We assume that the drones are equipped with some form of internet
-connectivity.)
+We assume that the drones are equipped with some form of internet connectivity.
 
-(In the following section, when I say that a components consumes a message, if
-the message contains an image url, assume that the component also downloads the
-image from the url to it's local storage.
-
-Also the service might use a shared persistent storage service to avoid
-hitting S3 every time.)
+> In the following section, when I say that a components consumes a message, if
+> the message contains an image url, assume that the component also downloads the
+> image from the url to it's local storage.
+>
+> Also the service might use a shared persistent storage service to avoid
+> hitting S3 every time.
 
 #### Leaf image cropper
 
@@ -415,12 +431,15 @@ served by the model serving solution and obtains all the bounding boxes. It then
 uses bounding boxes to crop out the leaves.
 
 For each cropped out leaf:
+
 - A new cropped leaf image is created. It is uploaded to:
-```
-s3://${STORAGE_BUCKET}/${position_id}/${date}/${cropper-model-id}/${cropper-model-version}/${leaf_crop_idx}.png
-```
+
+  ```
+  s3://${STORAGE_BUCKET}/${position_id}/${date}/${cropper-model-id}/${cropper-model-version}/${leaf_crop_idx}.png
+  ```
+
 - It produces a message on the "cropped_leaf" topic. The message contains the
-above S3 image object path.
+  above S3 image object path.
 
 #### Disease demultiplexer service
 
@@ -438,7 +457,7 @@ Each disease has 4 grades with 0 for healthy and 4 for most severe.
 A disease grader service uses it's corresponding disease grading model to grade
 the severity of the cropped leaf for the corresponding disease.
 
-The "disease_#n" grader model is served with a model serving solution like
+The "disease\_#n" grader model is served with a model serving solution like
 "Tensorflow serving" or "PyTorch serve". The model serving solution provides the
 model inference at specific HTTP or gRPC endpoint.
 
