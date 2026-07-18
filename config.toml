@@ -27,6 +27,9 @@ theme = "ayu-dark"
 
 [extra]
 
+# Local presentation enhancements loaded after the theme stylesheet.
+stylesheets = ["toc.css"]
+
 language_name.en = "English"
 
 # Enable JavaScript theme toggler for dark/light mode (and automatic switching).

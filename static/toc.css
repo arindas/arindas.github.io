@@ -1,0 +1,45 @@
+/* Keep the built-in TOC in the document flow on compact displays. */
+.toc-container a.is-active {
+    color: var(--hover-color);
+    background-color: var(--primary-color);
+    font-weight: 600;
+}
+
+@media screen and (min-width: 1100px) {
+    .toc-container {
+        position: fixed;
+        top: 6rem;
+        left: max(1.5rem, calc(50% - 750px));
+        z-index: 1;
+        width: min(13rem, calc(50vw - 21rem));
+        max-height: calc(100vh - 8rem);
+        margin: 0;
+        overflow-y: auto;
+        font-size: 0.72rem;
+        line-height: 1.35;
+        scrollbar-width: thin;
+    }
+
+    .toc-container h3 {
+        margin-top: 0;
+        font-size: 0.9rem;
+    }
+
+    .toc-container ul {
+        padding-left: 1rem;
+    }
+
+    .toc-container > ul {
+        margin-bottom: 0;
+    }
+
+    .toc-container li {
+        margin: 0.35rem 0;
+    }
+
+    .toc-container a {
+        display: block;
+        padding: 0.08rem 0.25rem;
+        border-radius: 0.15rem;
+    }
+}
