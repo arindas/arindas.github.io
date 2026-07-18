@@ -1,0 +1,100 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono&family=DM+Serif+Display:ital@0;1&display=swap');
+
+:root { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+
+body.gallery {
+    min-height: 100vh;
+    margin: 0;
+    overflow-x: hidden;
+    background: #181411;
+    color: #eee4d1;
+    font-family: "DM Mono", ui-monospace, monospace;
+}
+
+.gallery-noise {
+    position: fixed;
+    z-index: 10;
+    inset: 0;
+    pointer-events: none;
+    opacity: .2;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E");
+}
+
+.gallery-header, .gallery-footer {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 1.6rem clamp(1.25rem, 4vw, 4.5rem);
+    color: #b6a58f;
+    font-size: .68rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.gallery-header p { margin: 0; }
+.gallery-header a, .gallery-footer a { color: inherit; text-decoration: none; }
+.gallery-exit { border-bottom: 1px solid #776b5c; padding-bottom: .2rem; }
+.gallery-monogram { color: #f0c266 !important; font-family: "DM Serif Display", Georgia, serif; font-size: 1.4rem; letter-spacing: 0; }
+
+.gallery main { position: relative; z-index: 1; max-width: 1440px; margin: 0 auto; padding: 5.5rem clamp(1.25rem, 4vw, 4.5rem) 8rem; }
+.gallery-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .44fr); gap: 2rem; align-items: end; margin-bottom: 7rem; }
+.gallery-eyebrow { margin: 0 0 1.4rem; color: #db824f; font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; }
+.gallery h1, .gallery h2 { font-family: "DM Serif Display", Georgia, serif; font-weight: 400; }
+.gallery h1 { grid-column: 1; margin: 0; font-size: clamp(4.5rem, 12vw, 11.5rem); line-height: .79; letter-spacing: -.065em; }
+.gallery-intro { grid-column: 2; margin: 0 0 .35rem; color: #b6a58f; font-size: .83rem; line-height: 1.75; }
+
+.art-grid { display: grid; grid-template-columns: repeat(12, 1fr); align-items: start; gap: clamp(2rem, 4vw, 4.5rem) clamp(1rem, 2.5vw, 3rem); }
+.art-card { grid-column: span 4; }
+.art-card--1 { grid-column: 3 / span 4; }
+.art-card--2 { grid-column: span 4; }
+.art-card--3, .art-card--4 { grid-column: span 6; }
+.art-card--5 { grid-column: span 5; }
+.art-card--6 { grid-column: span 7; }
+.art-card--7 { grid-column: span 2; }
+.art-card--8 { grid-column: span 6; }
+.art-card--9 { grid-column: span 4; }
+.art-card--10, .art-card--11 { grid-column: span 6; order: 10; }
+.art-card--12 { grid-column: 3 / span 8; order: 9; }
+.art-card__link { color: inherit; text-decoration: none; }
+.art-card__frame { padding: clamp(.45rem, 1vw, .8rem); background: #d6c8af; box-shadow: 0 18px 45px #0008; }
+.art-card__frame img { display: block; width: 100%; max-height: 76vh; object-fit: cover; background: #382c24; }
+.art-card__caption { display: flex; justify-content: space-between; gap: 1rem; padding-top: 1rem; }
+.art-card__caption h2, .art-card__caption p { margin: 0; }
+.art-card__caption h2 { font-size: 1.45rem; }
+.art-card__caption p { padding-top: .45rem; color: #a69784; font-size: .66rem; line-height: 1.5; text-align: right; }
+.art-card__caption p span { display: block; max-width: 18rem; margin-top: .35rem; color: #db824f; }
+
+.gallery-preview { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); gap: clamp(2rem, 7vw, 9rem); align-items: center; max-width: 1160px; }
+.gallery-preview__canvas { position: relative; min-height: min(56vw, 620px); overflow: hidden; background: #c26b3e; box-shadow: 18px 18px 0 #4f3028, 0 30px 65px #0008; }
+.gallery-preview__canvas::before, .gallery-preview__canvas::after, .gallery-preview__canvas i { position: absolute; display: block; content: ""; border-radius: 50%; }
+.gallery-preview__canvas::before { width: 75%; height: 45%; top: -8%; left: -13%; background: #e8b550; transform: rotate(-16deg); }
+.gallery-preview__canvas::after { width: 58%; height: 63%; right: -20%; bottom: -22%; background: #292a36; }
+.gallery-preview__canvas i:nth-child(1) { width: 92%; height: 12%; top: 37%; left: -12%; background: #e9ddd0; transform: rotate(-23deg); border-radius: 0; }
+.gallery-preview__canvas i:nth-child(2) { width: 32%; height: 90%; top: 14%; left: 40%; background: #8b3940; transform: rotate(24deg); border-radius: 0; }
+.gallery-preview__canvas i:nth-child(3) { width: 19%; height: 19%; top: 32%; left: 23%; background: #172b35; }
+.gallery-preview__canvas i:nth-child(4) { width: 22%; height: 22%; bottom: 15%; left: 12%; background: #dfd2bd; }
+.gallery-preview__canvas i:nth-child(5) { width: 10%; height: 62%; top: 8%; right: 17%; background: #f1c861; transform: rotate(34deg); border-radius: 0; }
+.gallery-preview__note h2 { max-width: 420px; margin: 0; font-size: clamp(2.4rem, 4vw, 4.5rem); line-height: .94; letter-spacing: -.045em; }
+.gallery-preview__note > p:not(.gallery-eyebrow) { color: #b6a58f; font-size: .8rem; line-height: 1.7; }
+.gallery-preview__note a { display: inline-block; margin-top: 1rem; padding-bottom: .25rem; border-bottom: 1px solid #db824f; color: #f0c266; font-size: .7rem; text-decoration: none; text-transform: uppercase; }
+.gallery-footer { border-top: 1px solid #493e35; }
+
+@media (max-width: 720px) {
+    .gallery-header p { display: none; }
+    .gallery main { padding-top: 3.5rem; }
+    .gallery-hero { display: block; margin-bottom: 4.5rem; }
+    .gallery h1 { font-size: clamp(4rem, 20vw, 7rem); }
+    .gallery-intro { max-width: 300px; margin-top: 2.25rem; }
+    .art-grid { display: block; }
+    .art-card, .art-card--1, .art-card--2, .art-card--3, .art-card--4, .art-card--5, .art-card--6, .art-card--7, .art-card--8, .art-card--9, .art-card--10, .art-card--11, .art-card--12 { margin: 0 0 4rem; }
+    .gallery-preview { display: block; }
+    .gallery-preview__canvas { min-height: 88vw; }
+    .gallery-preview__note { margin-top: 3.5rem; }
+    .gallery-footer { gap: 1rem; }
+}

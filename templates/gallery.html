@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{{ section.description }}">
+    <meta name="color-scheme" content="dark">
+    <title>{{ section.title }} · Arindam Das</title>
+    <link rel="stylesheet" href="{{ get_url(path='gallery.css') }}">
+</head>
+<body class="gallery">
+    <div class="gallery-noise" aria-hidden="true"></div>
+    <header class="gallery-header">
+        <a class="gallery-monogram" href="{{ config.base_url }}" aria-label="Back to Arindam Das' website">AD</a>
+        <p>Arindam Das — studio archive</p>
+        <a class="gallery-exit" href="{{ config.base_url }}">Return to journal <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main>
+        <section class="gallery-hero" aria-labelledby="gallery-title">
+            <p class="gallery-eyebrow">Paintings &amp; sketches</p>
+            <h1 id="gallery-title">A quieter<br>body of work.</h1>
+            <p class="gallery-intro">Graphite, oil, acrylic, and the studies in between. A collection apart from the rest of this site.</p>
+        </section>
+
+        {% if section.extra.artworks %}
+        <section class="art-grid" aria-label="Artwork">
+            {% for artwork in section.extra.artworks %}
+            <article class="art-card art-card--{{ loop.index }}">
+                <a href="{{ artwork.instagram }}" class="art-card__link" target="_blank" rel="noopener noreferrer">
+                    <div class="art-card__frame">
+                        <img src="{{ get_url(path=artwork.image) }}" alt="{{ artwork.alt | default(value=artwork.title) }}" loading="lazy">
+                    </div>
+                    <div class="art-card__caption">
+                        <h2>{{ artwork.title }}</h2>
+                        <p>{{ artwork.medium }}{% if artwork.year %} · {{ artwork.year }}{% endif %}{% if artwork.inspiration %}<span>{{ artwork.inspiration }}</span>{% endif %}</p>
+                    </div>
+                </a>
+            </article>
+            {% endfor %}
+        </section>
+        {% else %}
+        <section class="gallery-preview" aria-label="Studio preview">
+            <div class="gallery-preview__canvas" aria-hidden="true">
+                <i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <div class="gallery-preview__note">
+                <p class="gallery-eyebrow">Studio archive</p>
+                <h2>Original works are being prepared for this space.</h2>
+                <p>For now, the existing collection can be found on Instagram.</p>
+                <a href="https://www.instagram.com/arind_das/" target="_blank" rel="noopener noreferrer">View the collection <span aria-hidden="true">↗</span></a>
+            </div>
+        </section>
+        {% endif %}
+    </main>
+
+    <footer class="gallery-footer">
+        <p>© {{ now() | date(format="%Y") }} Arindam Das</p>
+        <a href="https://www.instagram.com/arind_das/" target="_blank" rel="noopener noreferrer">Instagram <span aria-hidden="true">↗</span></a>
+    </footer>
+</body>
+</html>

@@ -63,6 +63,7 @@ menu = [
     { name = "archive", url = "archive/" },
     { name = "tags", url = "tags/" },
     { name = "projects", url = "projects/" },
+    { name = "gallery", url = "gallery/" },
     { name = "about", url = "about/" },
 ]
 
