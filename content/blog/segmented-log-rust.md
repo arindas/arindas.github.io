@@ -22,7 +22,7 @@ to an append only ordered collection of records where the records are ordered
 by time.
 
 <p align="center">
-<img src="/img/log.png" alt="queue-diagram" width="594" height="582" style="width: 50%" loading="lazy" decoding="async"/>
+<img src="/img/log.png" srcset="/img/log-380.png 380w, /img/log.png 594w" sizes="(max-width: 600px) 50vw, 300px" class="half-width-image" alt="queue-diagram" width="594" height="582" loading="lazy" decoding="async"/>
 </p>
 <p align="center" class="caption">
 <b>Fig:</b> The Log: An append only ordered collection of records.
@@ -63,7 +63,7 @@ instruction, till the teacher finishes giving instructions. They are then
 required to submit the final calculated number to the teacher.
 
 <p align="center">
-<img src="/img/log-less-direct-repl.png" alt="log-less-direct-repl" width="761" height="661" loading="lazy" decoding="async"/>
+<img src="/img/log-less-direct-repl.png" srcset="/img/log-less-direct-repl-380.png 380w, /img/log-less-direct-repl.png 761w" sizes="(max-width: 600px) calc(100vw - 32px), 600px" alt="log-less-direct-repl" width="761" height="661" loading="lazy" decoding="async"/>
 </p>
 <p align="center" class="caption">
 <b>Fig:</b> Sample scenario with initial number 42.
@@ -245,7 +245,7 @@ instead.
 > then use it like an array, but that's a topic for a different day.
 
 <p align="center">
-<img src="/img/log.png" alt="queue-diagram" width="594" height="582" style="width: 50%" loading="lazy" decoding="async"/>
+<img src="/img/log.png" srcset="/img/log-380.png 380w, /img/log.png 594w" sizes="(max-width: 600px) 50vw, 300px" class="half-width-image" alt="queue-diagram" width="594" height="582" loading="lazy" decoding="async"/>
 </p>
 <p align="center" class="caption">
 <b>Fig:</b> A log implementation based on a file.
@@ -376,7 +376,7 @@ provided above.
 ### Implementation outline
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/arindas/laminarmq/assets/assets/diagrams/laminarmq-segmented-log.svg" alt="segmented_log"/>
+<img src="https://raw.githubusercontent.com/arindas/laminarmq/assets/assets/diagrams/laminarmq-segmented-log.svg" alt="segmented_log" width="644" height="785" loading="lazy" decoding="async"/>
 </p>
 <p align="center">
 <b>Fig:</b> Data organisation for persisting a <code>segmented_log</code> on a <code>*nix</code> file system.
@@ -433,7 +433,7 @@ Hence, to accommodate this use case, we introduced an intermediate indexing
 layer to our design.
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/arindas/laminarmq/assets/assets/diagrams/laminarmq-indexed-segmented-log-landscape.svg" alt="segmented_log" />
+<img src="https://raw.githubusercontent.com/arindas/laminarmq/assets/assets/diagrams/laminarmq-indexed-segmented-log-landscape.svg" alt="segmented_log" width="874" height="695" loading="lazy" decoding="async" />
 </p>
 
 ```
@@ -4267,7 +4267,7 @@ This server exposes the following HTTP endpoints:
 ##### Architecture outline for our commit-log server
 
 <p align="center">
-<img src="/img/laminarmq-tokio-commit-log-server-example.svg" alt="tokio-commit-log-server-architechture"/>
+<img src="/img/laminarmq-tokio-commit-log-server-example.svg" alt="tokio-commit-log-server-architechture" width="873" height="554" loading="lazy" decoding="async"/>
 </p>
 <p align="center" class="caption">
 <b>Fig:</b> Architecture for our <code>tokio</code> based commit-log server.

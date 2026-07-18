@@ -93,6 +93,10 @@
                 {%- endif -%}
             {% endif -%}
 
+            {# Giscus loads its theme stylesheet from its own origin. #}
+            {%- if domain.directive == "style-src" and giscus_enabled %} giscus.app
+            {%- endif -%}
+
             {%- if domain.directive == "script-src" or domain.directive == "frame-src" -%}
                 {%- if giscus_enabled %} giscus.app
                 {%- elif utterances_enabled %} utteranc.es

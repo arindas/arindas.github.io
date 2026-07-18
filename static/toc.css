@@ -204,3 +204,7 @@
         margin-bottom: 0.2rem;
     }
 }
+/* Content-specific image presentation without requiring inline styles. */
+.half-width-image {
+    width: 50%;
+}
