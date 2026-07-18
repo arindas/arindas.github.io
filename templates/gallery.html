@@ -27,7 +27,7 @@
         <section class="art-grid" aria-label="Artwork">
             {% for artwork in section.extra.artworks %}
             <article class="art-card art-card--{{ loop.index }}">
-                <button type="button" class="art-card__link" data-artwork-src="{{ get_url(path=artwork.image) }}" data-artwork-alt="{{ artwork.alt | default(value=artwork.title) }}" aria-label="View {{ artwork.title }} full size">
+                <button type="button" class="art-card__link" data-artwork-src="{{ get_url(path=artwork.image) }}" data-artwork-alt="{{ artwork.alt | default(value=artwork.title) }}" data-artwork-title="{{ artwork.title }}" data-artwork-details="{{ artwork.medium }}{% if artwork.year %} · {{ artwork.year }}{% endif %}"{% if artwork.inspiration %} data-artwork-inspiration="{{ artwork.inspiration }}"{% endif %} aria-label="View {{ artwork.title }} full size">
                     <div class="art-card__frame">
                         <img src="{{ get_url(path=artwork.image) }}" alt="{{ artwork.alt | default(value=artwork.title) }}" loading="lazy">
                     </div>
@@ -55,19 +55,25 @@
     </main>
 
     <dialog class="art-dialog" aria-labelledby="art-dialog-title">
-        <div class="art-dialog__bar">
-            <p id="art-dialog-title">Artwork detail</p>
-            <div class="art-dialog__controls">
-                <button type="button" class="art-dialog__control" data-zoom-out aria-label="Zoom out">−</button>
-                <button type="button" class="art-dialog__control" data-zoom-reset>Reset</button>
-                <button type="button" class="art-dialog__control" data-zoom-in aria-label="Zoom in">+</button>
-                <button type="button" class="art-dialog__close" data-dialog-close>Close <span aria-hidden="true">×</span></button>
-            </div>
-        </div>
         <div class="art-dialog__viewport" data-artwork-viewport>
             <img class="art-dialog__image" data-artwork-image alt="" draggable="false">
         </div>
-        <p class="art-dialog__hint">Drag to pan · Scroll or pinch to zoom</p>
+        <aside class="art-dialog__panel">
+            <div class="art-dialog__bar">
+                <p class="art-dialog__hint">Drag to pan · Scroll or pinch to zoom</p>
+                <div class="art-dialog__controls">
+                    <button type="button" class="art-dialog__control" data-zoom-out aria-label="Zoom out">−</button>
+                    <button type="button" class="art-dialog__control" data-zoom-reset>Reset</button>
+                    <button type="button" class="art-dialog__control" data-zoom-in aria-label="Zoom in">+</button>
+                    <button type="button" class="art-dialog__close" data-dialog-close aria-label="Close artwork viewer" title="Close">×</button>
+                </div>
+            </div>
+            <div class="art-dialog__details">
+                <h2 id="art-dialog-title" data-artwork-title>Artwork detail</h2>
+                <p data-artwork-details></p>
+                <p data-artwork-inspiration></p>
+            </div>
+        </aside>
     </dialog>
 
     <footer class="gallery-footer">
@@ -78,6 +84,9 @@
         const dialog = document.querySelector('.art-dialog');
         const viewport = dialog?.querySelector('[data-artwork-viewport]');
         const image = dialog?.querySelector('[data-artwork-image]');
+        const title = dialog?.querySelector('[data-artwork-title]');
+        const details = dialog?.querySelector('[data-artwork-details]');
+        const inspiration = dialog?.querySelector('[data-artwork-inspiration]');
         let scale = 1;
         let x = 0;
         let y = 0;
@@ -119,6 +128,9 @@
             button.addEventListener('click', () => {
                 image.src = button.dataset.artworkSrc;
                 image.alt = button.dataset.artworkAlt;
+                title.textContent = button.dataset.artworkTitle;
+                details.textContent = button.dataset.artworkDetails;
+                inspiration.textContent = button.dataset.artworkInspiration || '';
                 reset();
                 dialog.showModal();
             });
