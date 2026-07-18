@@ -5,7 +5,8 @@ base_url = "https://arindas.github.io"
 compile_sass = true
 
 # Whether to build a search index to be used later on by a JavaScript library
-build_search_index = true
+# The site has no search UI, so avoid generating and deploying an unused index.
+build_search_index = false
 
 theme = "tabi"
 
@@ -27,9 +28,6 @@ style = "class"
 theme = "ayu-dark"
 
 [extra]
-
-# Local presentation enhancements loaded after the theme stylesheet.
-stylesheets = ["toc.css", "projects.css"]
 
 language_name.en = "English"
 

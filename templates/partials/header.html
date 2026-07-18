@@ -30,10 +30,12 @@
 
     <link rel="stylesheet" type="text/css" media="screen" href={{ get_url(path="main.css" ) }} />
 
-    {% if config.extra.stylesheets %}
-        {% for stylesheet in config.extra.stylesheets %}
-            <link rel="stylesheet" href="{{ get_url(path=stylesheet) }}">
-        {% endfor %}
+    {# Load page-specific styles only where their corresponding UI exists. #}
+    {% if page.extra.toc %}
+        <link rel="stylesheet" href="{{ get_url(path='toc.css') }}">
+    {% endif %}
+    {% if section and section.title == 'Projects' %}
+        <link rel="stylesheet" href="{{ get_url(path='projects.css') }}">
     {% endif %}
 
     <meta name="color-scheme" content="light dark">
@@ -118,6 +120,8 @@
     {%- endif -%}
 
     {# Highlights the section currently being read in post table-of-contents links. #}
-    <script defer src="{{ get_url(path='js/toc.js', trailing_slash=false) | safe }}"></script>
+    {% if page.extra.toc %}
+        <script defer src="{{ get_url(path='js/toc.js', trailing_slash=false) | safe }}"></script>
+    {% endif %}
 
 </head>

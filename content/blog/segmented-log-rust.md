@@ -22,7 +22,7 @@ to an append only ordered collection of records where the records are ordered
 by time.
 
 <p align="center">
-<img src="/img/log.png" alt="queue-diagram" width="50%"/>
+<img src="/img/log.png" alt="queue-diagram" width="594" height="582" style="width: 50%" loading="lazy" decoding="async"/>
 </p>
 <p align="center" class="caption">
 <b>Fig:</b> The Log: An append only ordered collection of records.
@@ -63,7 +63,7 @@ instruction, till the teacher finishes giving instructions. They are then
 required to submit the final calculated number to the teacher.
 
 <p align="center">
-<img src="/img/log-less-direct-repl.png" alt="log-less-direct-repl"/>
+<img src="/img/log-less-direct-repl.png" alt="log-less-direct-repl" width="761" height="661" loading="lazy" decoding="async"/>
 </p>
 <p align="center" class="caption">
 <b>Fig:</b> Sample scenario with initial number 42.
@@ -123,7 +123,7 @@ exercise to foster teamwork between their students, the teacher delegates the
 instruction sharing task to the students.
 
 <p align="center">
-<img alt="log-based-repl" src="/img/log-based-repl.png" />
+<img alt="log-based-repl" src="/img/log-based-repl.png" width="1116" height="640" loading="lazy" decoding="async" />
 </p>
 <p align="center" class="caption">
 <b>Fig:</b> Log based state machine replication between front, middle and back benchers.
@@ -245,7 +245,7 @@ instead.
 > then use it like an array, but that's a topic for a different day.
 
 <p align="center">
-<img src="/img/log.png" alt="queue-diagram" width="50%"/>
+<img src="/img/log.png" alt="queue-diagram" width="594" height="582" style="width: 50%" loading="lazy" decoding="async"/>
 </p>
 <p align="center" class="caption">
 <b>Fig:</b> A log implementation based on a file.
@@ -267,7 +267,7 @@ The logical next step is to split this abstraction across multiple smaller
 units. We call these smaller units _segments_.
 
 <p align="center">
-<img src="/img/segmented-log-basic-intro.png" alt="segmented-log-basic-intro"/>
+<img src="/img/segmented-log-basic-intro.png" alt="segmented-log-basic-intro" width="1402" height="812" loading="lazy" decoding="async"/>
 </p>
 <p align="center" class="caption">
 <b>Fig:</b> <code>segmented_log</code> outline.
@@ -311,7 +311,7 @@ This section presents the `segmented_log` as described in the Apache Kafka
 [paper](https://pages.cs.wisc.edu/~akella/CS744/F17/838-CloudPapers/Kafka.pdf).
 
 <p align="center">
-<img src="/img/kafka-segmented-log.png" alt="kafka-segmented-log"/>
+<img src="/img/kafka-segmented-log.png" alt="kafka-segmented-log" width="681" height="638" loading="lazy" decoding="async"/>
 </p>
 <p align="center" class="caption">
 <b>Fig:</b> <code>segmented_log</code> <i>(Fig. 2)</i> from the the Apache Kafka paper.

@@ -29,7 +29,7 @@
             <article class="art-card art-card--{{ loop.index }}">
                 <button type="button" class="art-card__link" data-artwork-src="{{ get_url(path=artwork.image) }}" data-artwork-alt="{{ artwork.alt | default(value=artwork.title) }}" data-artwork-title="{{ artwork.title }}" data-artwork-details="{{ artwork.medium }}{% if artwork.year %} · {{ artwork.year }}{% endif %}"{% if artwork.inspiration %} data-artwork-inspiration="{{ artwork.inspiration }}"{% endif %} aria-label="View {{ artwork.title }} full size">
                     <div class="art-card__frame">
-                        <img src="{{ get_url(path=artwork.image) }}" alt="{{ artwork.alt | default(value=artwork.title) }}" loading="lazy">
+                        <img src="{{ get_url(path=artwork.image) }}" alt="{{ artwork.alt | default(value=artwork.title) }}" loading="lazy" decoding="async">
                     </div>
                     <div class="art-card__caption">
                         <h2>{{ artwork.title }}</h2>
