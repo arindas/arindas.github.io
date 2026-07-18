@@ -52,7 +52,7 @@
     {% if is_404 %}
         <meta name="robots" content="noindex, follow">
     {% else %}
-        <meta name="robots" content="index, nofollow">
+        <meta name="robots" content="index, follow">
     {% endif %}
 
     <meta property="og:title" content="{{ macros_set_title::set_title() }}">
@@ -60,10 +60,10 @@
 
     {% if page.extra.header_image %}
         <meta property="og:image" content="{{ page.extra.header_image }}">
-        <meta name="twitter:card" content="{{ page.extra.header_image }}">
+        <meta name="twitter:card" content="summary_large_image">
     {% elif config.extra.headerImage %}
         <meta property="og:image" content="{{ config.extra.headerImage }}">
-        <meta name="twitter:card" content="{{ config.extra.headerImage }}">
+        <meta name="twitter:card" content="summary_large_image">
     {% endif %}
 
     {% set current_url = current_url | default(value="/") %}

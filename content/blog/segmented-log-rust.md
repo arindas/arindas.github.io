@@ -10,7 +10,7 @@ tags = ["rust", "tokio", "segmented-log", "message-queue", "distributed-systems"
 toc = true
 giscus = true
 quick_navigation_buttons = true
-header_image = "/img/segmented-log-basic-intro.png"
+header_image = "https://arindas.github.io/img/segmented-log-basic-intro.png"
 +++
 
 > _Psst._ Do you already know segmented logs well? If yes, jump [here](#a-segmented-log-implementation).
