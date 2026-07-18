@@ -1,5 +1,13 @@
 :root { color-scheme: dark; }
 
+@font-face {
+    font-family: "Source Serif 4";
+    src: url("fonts/SourceSerif4Variable-Roman.ttf.woff2") format("woff2");
+    font-display: optional;
+    font-style: normal;
+    font-weight: 200 900;
+}
+
 * { box-sizing: border-box; }
 
 body.gallery {
@@ -8,7 +16,7 @@ body.gallery {
     overflow-x: hidden;
     background: #181411;
     color: #eee4d1;
-    font-family: "DM Mono", ui-monospace, monospace;
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
 .gallery-noise {
@@ -38,13 +46,13 @@ body.gallery {
 .gallery-header p { margin: 0; }
 .gallery-header a, .gallery-footer a { color: inherit; text-decoration: none; }
 .gallery-exit { border-bottom: 1px solid #776b5c; padding-bottom: .2rem; }
-.gallery-monogram { color: #f0c266 !important; font-family: "DM Serif Display", Georgia, serif; font-size: 1.4rem; letter-spacing: 0; }
+.gallery-monogram { color: #f0c266 !important; font-family: "Source Serif 4", Georgia, serif; font-size: 1.5rem; font-style: italic; letter-spacing: -.08em; }
 
 .gallery main { position: relative; z-index: 1; max-width: 1440px; margin: 0 auto; padding: 3.75rem clamp(1.25rem, 4vw, 4.5rem) 8rem; }
 .gallery-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .44fr); gap: 2rem; align-items: end; margin-bottom: 3.75rem; }
 .gallery-eyebrow { margin: 0 0 1.4rem; color: #db824f; font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; }
-.gallery h1, .gallery h2 { font-family: "DM Serif Display", Georgia, serif; font-weight: 400; }
-.gallery h1 { grid-column: 1; margin: 0; font-size: clamp(3.5rem, 8vw, 7rem); line-height: .84; letter-spacing: -.06em; }
+.gallery h1, .gallery h2 { font-family: "Source Serif 4", Georgia, serif; font-weight: 450; }
+.gallery h1 { grid-column: 1; margin: 0; font-size: clamp(3.5rem, 8vw, 7rem); font-style: italic; line-height: .84; letter-spacing: -.07em; }
 .gallery-intro { grid-column: 2; margin: 0 0 .35rem; color: #b6a58f; font-size: .83rem; line-height: 1.75; }
 
 .art-grid { display: grid; grid-template-columns: repeat(12, 1fr); align-items: start; gap: clamp(2rem, 4vw, 4.5rem) clamp(1rem, 2.5vw, 3rem); }
@@ -66,7 +74,7 @@ body.gallery {
 .art-card__frame img { display: block; width: 100%; max-height: 76vh; object-fit: cover; background: #382c24; }
 .art-card__caption { display: flex; justify-content: space-between; gap: 1rem; padding-top: 1rem; }
 .art-card__caption h2, .art-card__caption p { margin: 0; }
-.art-card__caption h2 { font-size: 1.45rem; }
+.art-card__caption h2 { font-size: 1.55rem; line-height: .95; }
 .art-card__caption p { padding-top: .45rem; color: #a69784; font-size: .66rem; line-height: 1.5; text-align: right; }
 .art-card__caption p span { display: block; max-width: 18rem; margin-top: .35rem; color: #db824f; }
 
@@ -92,7 +100,7 @@ body.gallery {
 .art-dialog__bar { color: inherit; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
 .art-dialog__details h2, .art-dialog__details p { margin: 0; }
 .art-dialog__details { margin: auto 0; padding: 1.5rem 0; border-top: 1px solid #493e35; border-bottom: 1px solid #493e35; color: #b6a58f; }
-.art-dialog__details h2 { color: #eee4d1; font-family: "DM Serif Display", Georgia, serif; font-size: 1.8rem; font-weight: 400; letter-spacing: -.02em; text-transform: none; overflow-wrap: anywhere; }
+.art-dialog__details h2 { color: #eee4d1; font-family: "Source Serif 4", Georgia, serif; font-size: 1.9rem; font-weight: 450; letter-spacing: -.03em; text-transform: none; overflow-wrap: anywhere; }
 .art-dialog__details p { margin-top: .45rem; font-size: .66rem; line-height: 1.6; overflow-wrap: anywhere; }
 .art-dialog__details p:last-child:not(:empty) { color: #db824f; }
 .art-dialog__controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; gap: .45rem; }

@@ -27,9 +27,10 @@
         <section class="art-grid" aria-label="Artwork">
             {% for artwork in section.extra.artworks %}
             <article class="art-card art-card--{{ loop.index }}">
+                {% set preview_800 = artwork.preview | replace(from="-480.webp", to="-800.webp") %}
                 <button type="button" class="art-card__link" data-artwork-src="{{ get_url(path=artwork.image) }}" data-artwork-alt="{{ artwork.alt | default(value=artwork.title) }}" data-artwork-title="{{ artwork.title }}" data-artwork-details="{{ artwork.medium }}{% if artwork.year %} · {{ artwork.year }}{% endif %}"{% if artwork.inspiration %} data-artwork-inspiration="{{ artwork.inspiration }}"{% endif %} aria-label="View {{ artwork.title }} full size">
                     <div class="art-card__frame">
-                        <img src="{{ get_url(path=artwork.image) }}" alt="{{ artwork.alt | default(value=artwork.title) }}" loading="lazy" decoding="async">
+                        <img src="{{ get_url(path=artwork.preview) }}" srcset="{{ get_url(path=artwork.preview) }} 480w, {{ get_url(path=preview_800) }} 800w" sizes="(max-width: 720px) calc(100vw - 2.5rem), (max-width: 1100px) 50vw, 640px" alt="{{ artwork.alt | default(value=artwork.title) }}" loading="lazy" decoding="async">
                     </div>
                     <div class="art-card__caption">
                         <h2>{{ artwork.title }}</h2>
@@ -126,13 +127,14 @@
 
         document.querySelectorAll('.art-card__link').forEach((button) => {
             button.addEventListener('click', () => {
-                image.src = button.dataset.artworkSrc;
+                image.removeAttribute('src');
                 image.alt = button.dataset.artworkAlt;
                 title.textContent = button.dataset.artworkTitle;
                 details.textContent = button.dataset.artworkDetails;
                 inspiration.textContent = button.dataset.artworkInspiration || '';
                 reset();
                 dialog.showModal();
+                image.src = button.dataset.artworkSrc;
             });
         });
         dialog?.querySelector('[data-dialog-close]').addEventListener('click', () => dialog.close());
