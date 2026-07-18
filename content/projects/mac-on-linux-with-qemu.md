@@ -6,5 +6,5 @@ weight = 2
 
 [extra]
 link_to = "https://github.com/arindas/mac-on-linux-with-qemu"
+stack = ["QEMU", "Systems"]
 +++
-

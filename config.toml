@@ -29,7 +29,7 @@ theme = "ayu-dark"
 [extra]
 
 # Local presentation enhancements loaded after the theme stylesheet.
-stylesheets = ["toc.css"]
+stylesheets = ["toc.css", "projects.css"]
 
 language_name.en = "English"
 

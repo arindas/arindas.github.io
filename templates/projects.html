@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block main_content %}
+    {{ macros_page_header::page_header(title=section.title) }}
+
+    <main class="projects-page">
+        <p class="projects-intro">A selection of systems, storage, and developer-tooling work. The featured projects are the ones I would start with.</p>
+
+        <section aria-labelledby="selected-work">
+            <div class="projects-heading">
+                <h1 id="selected-work">Selected work</h1>
+                <p>Longer-lived explorations of distributed systems and storage.</p>
+            </div>
+
+            <div class="featured-projects">
+                {% for page in section.pages %}
+                    {% if page.extra.featured %}
+                        <article class="featured-project">
+                            <div class="featured-project-main">
+                                <div class="project-kicker">
+                                    {% for item in page.extra.stack %}
+                                        <span>{{ item }}</span>{% if not loop.last %}<span aria-hidden="true">·</span>{% endif %}
+                                    {% endfor %}
+                                </div>
+                                <h2><a href="{{ page.extra.link_to | safe }}" target="_blank" rel="noopener noreferrer">{{ page.title }}</a></h2>
+                                <p>{{ page.description }}</p>
+                            </div>
+                            <a class="project-source" href="{{ page.extra.link_to | safe }}" target="_blank" rel="noopener noreferrer">View source <span aria-hidden="true">↗</span></a>
+                        </article>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="repository-index" aria-labelledby="more-projects">
+            <div class="projects-heading">
+                <h1 id="more-projects">More repositories</h1>
+                <p>Experiments, utilities, and learning projects.</p>
+            </div>
+
+            <ul class="project-list">
+                {% for page in section.pages %}
+                    {% if not page.extra.featured %}
+                        <li>
+                            <a class="project-list-name" href="{{ page.extra.link_to | safe }}" target="_blank" rel="noopener noreferrer">{{ page.title }} <span aria-hidden="true">↗</span></a>
+                            <p>{{ page.description }}</p>
+                            <div class="project-list-stack">{{ page.extra.stack | join(sep=" · ") }}</div>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+{% endblock main_content %}

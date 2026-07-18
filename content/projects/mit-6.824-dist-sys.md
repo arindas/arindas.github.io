@@ -6,6 +6,6 @@ weight = 2
 
 [extra]
 link_to = "https://github.com/arindas/mit-6.824-distributed-systems"
+stack = ["Go", "Coursework"]
 +++
-
 

@@ -1,0 +1,115 @@
+.projects-page {
+    max-width: 780px;
+    margin: 0 auto;
+}
+
+.projects-intro {
+    max-width: 590px;
+    margin: 2.5rem 0 4.5rem;
+    color: var(--meta-color);
+    font-family: var(--serif-font);
+    font-size: 1.2rem;
+    line-height: 1.6;
+}
+
+.projects-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1.5rem;
+    border-bottom: 1px solid var(--divider-color);
+    padding-bottom: .75rem;
+}
+
+.projects-heading h1 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.projects-heading p {
+    margin: 0;
+    color: var(--meta-color);
+    font-size: .9rem;
+    text-align: right;
+}
+
+.featured-project {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2rem;
+    padding: 2.25rem 0;
+    border-bottom: 1px solid var(--divider-color);
+}
+
+.project-kicker, .project-list-stack {
+    color: var(--meta-color);
+    font-family: var(--code-font);
+    font-size: .78rem;
+    letter-spacing: .02em;
+}
+
+.project-kicker span + span { margin-left: .35rem; }
+
+.featured-project h2 {
+    margin: .35rem 0 .5rem;
+    font-size: 1.75rem;
+}
+
+.featured-project h2 a, .project-list-name {
+    color: var(--text-color-high-contrast);
+    text-decoration-thickness: 1px;
+    text-underline-offset: .16em;
+}
+
+.featured-project p {
+    max-width: 600px;
+    margin: 0;
+    font-family: var(--serif-font);
+    font-size: 1.08rem;
+    line-height: 1.55;
+}
+
+.project-source {
+    align-self: start;
+    white-space: nowrap;
+    font-size: .9rem;
+}
+
+.repository-index { margin-top: 5rem; }
+
+.project-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.project-list li {
+    display: grid;
+    grid-template-columns: minmax(150px, .85fr) minmax(0, 2fr) minmax(130px, .7fr);
+    gap: 1.25rem;
+    align-items: baseline;
+    padding: 1.1rem 0;
+    border-bottom: 1px solid var(--divider-color);
+}
+
+.project-list-name { font-weight: 650; }
+
+.project-list p {
+    margin: 0;
+    font-family: var(--serif-font);
+    line-height: 1.45;
+}
+
+.project-list-stack { text-align: right; }
+
+@media (max-width: 680px) {
+    .projects-intro { margin: 2rem 0 3.5rem; }
+    .projects-heading { display: block; }
+    .projects-heading p { margin-top: .3rem; text-align: left; }
+    .featured-project { display: block; }
+    .project-source { display: inline-block; margin-top: 1rem; }
+    .repository-index { margin-top: 3.5rem; }
+    .project-list li { display: block; }
+    .project-list p { margin: .35rem 0; }
+    .project-list-stack { text-align: left; }
+}

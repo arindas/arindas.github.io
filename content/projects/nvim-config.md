@@ -6,7 +6,7 @@ weight = 2
 
 [extra]
 link_to = "https://github.com/arindas/nvim-config"
+stack = ["Lua", "Developer tools"]
 +++
-
 
 

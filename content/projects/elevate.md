@@ -6,5 +6,5 @@ weight = 2
 
 [extra]
 link_to = "https://github.com/arindas/elevate"
+stack = ["Go", "Developer tools"]
 +++
-
