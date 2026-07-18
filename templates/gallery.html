@@ -27,7 +27,7 @@
         <section class="art-grid" aria-label="Artwork">
             {% for artwork in section.extra.artworks %}
             <article class="art-card art-card--{{ loop.index }}">
-                <a href="{{ artwork.instagram }}" class="art-card__link" target="_blank" rel="noopener noreferrer">
+                <button type="button" class="art-card__link" data-artwork-src="{{ get_url(path=artwork.image) }}" data-artwork-alt="{{ artwork.alt | default(value=artwork.title) }}" aria-label="View {{ artwork.title }} full size">
                     <div class="art-card__frame">
                         <img src="{{ get_url(path=artwork.image) }}" alt="{{ artwork.alt | default(value=artwork.title) }}" loading="lazy">
                     </div>
@@ -35,7 +35,7 @@
                         <h2>{{ artwork.title }}</h2>
                         <p>{{ artwork.medium }}{% if artwork.year %} · {{ artwork.year }}{% endif %}{% if artwork.inspiration %}<span>{{ artwork.inspiration }}</span>{% endif %}</p>
                     </div>
-                </a>
+                </button>
             </article>
             {% endfor %}
         </section>
@@ -54,9 +54,114 @@
         {% endif %}
     </main>
 
+    <dialog class="art-dialog" aria-labelledby="art-dialog-title">
+        <div class="art-dialog__bar">
+            <p id="art-dialog-title">Artwork detail</p>
+            <div class="art-dialog__controls">
+                <button type="button" class="art-dialog__control" data-zoom-out aria-label="Zoom out">−</button>
+                <button type="button" class="art-dialog__control" data-zoom-reset>Reset</button>
+                <button type="button" class="art-dialog__control" data-zoom-in aria-label="Zoom in">+</button>
+                <button type="button" class="art-dialog__close" data-dialog-close>Close <span aria-hidden="true">×</span></button>
+            </div>
+        </div>
+        <div class="art-dialog__viewport" data-artwork-viewport>
+            <img class="art-dialog__image" data-artwork-image alt="" draggable="false">
+        </div>
+        <p class="art-dialog__hint">Drag to pan · Scroll or pinch to zoom</p>
+    </dialog>
+
     <footer class="gallery-footer">
         <p>© {{ now() | date(format="%Y") }} Arindam Das</p>
         <a href="https://www.instagram.com/arind_das/" target="_blank" rel="noopener noreferrer">Instagram <span aria-hidden="true">↗</span></a>
     </footer>
+    <script>
+        const dialog = document.querySelector('.art-dialog');
+        const viewport = dialog?.querySelector('[data-artwork-viewport]');
+        const image = dialog?.querySelector('[data-artwork-image]');
+        let scale = 1;
+        let x = 0;
+        let y = 0;
+        let originX = 0;
+        let originY = 0;
+        let pointers = new Map();
+        let pinchDistance = 0;
+        let pinchScale = 1;
+
+        const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+        const render = () => {
+            image.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+        };
+        const reset = () => {
+            scale = 1;
+            x = 0;
+            y = 0;
+            render();
+        };
+        const zoom = (nextScale, clientX, clientY) => {
+            const bounds = viewport.getBoundingClientRect();
+            const previous = scale;
+            scale = clamp(nextScale, 1, 5);
+            if (clientX !== undefined && scale !== previous) {
+                const pointX = clientX - bounds.left - bounds.width / 2;
+                const pointY = clientY - bounds.top - bounds.height / 2;
+                const factor = scale / previous;
+                x = pointX - (pointX - x) * factor;
+                y = pointY - (pointY - y) * factor;
+            }
+            render();
+        };
+        const distance = () => {
+            const [first, second] = [...pointers.values()];
+            return Math.hypot(first.x - second.x, first.y - second.y);
+        };
+
+        document.querySelectorAll('.art-card__link').forEach((button) => {
+            button.addEventListener('click', () => {
+                image.src = button.dataset.artworkSrc;
+                image.alt = button.dataset.artworkAlt;
+                reset();
+                dialog.showModal();
+            });
+        });
+        dialog?.querySelector('[data-dialog-close]').addEventListener('click', () => dialog.close());
+        dialog?.querySelector('[data-zoom-in]').addEventListener('click', () => zoom(scale + .4));
+        dialog?.querySelector('[data-zoom-out]').addEventListener('click', () => zoom(scale - .4));
+        dialog?.querySelector('[data-zoom-reset]').addEventListener('click', reset);
+        dialog?.addEventListener('click', (event) => {
+            if (event.target === dialog) dialog.close();
+        });
+        viewport?.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            zoom(scale * (event.deltaY < 0 ? 1.15 : .87), event.clientX, event.clientY);
+        }, { passive: false });
+        viewport?.addEventListener('pointerdown', (event) => {
+            viewport.setPointerCapture(event.pointerId);
+            pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            if (pointers.size === 1) {
+                originX = event.clientX - x;
+                originY = event.clientY - y;
+            } else if (pointers.size === 2) {
+                pinchDistance = distance();
+                pinchScale = scale;
+            }
+        });
+        viewport?.addEventListener('pointermove', (event) => {
+            if (!pointers.has(event.pointerId)) return;
+            pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            if (pointers.size === 1) {
+                x = event.clientX - originX;
+                y = event.clientY - originY;
+                render();
+            } else if (pointers.size === 2 && pinchDistance) {
+                zoom(pinchScale * distance() / pinchDistance);
+            }
+        });
+        const releasePointer = (event) => {
+            pointers.delete(event.pointerId);
+            pinchDistance = pointers.size === 2 ? distance() : 0;
+        };
+        viewport?.addEventListener('pointerup', releasePointer);
+        viewport?.addEventListener('pointercancel', releasePointer);
+    </script>
 </body>
 </html>
