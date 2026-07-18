@@ -63,6 +63,12 @@ alt = "Graphite feline study"
 instagram = "https://www.instagram.com/p/Cqzrk80r0yu/"
 
 [[extra.artworks]]
+title = "Quokka"
+medium = "Graphite sketch"
+image = "img/gallery/quokka.jpeg"
+alt = "Graphite sketch of a quokka"
+
+[[extra.artworks]]
 title = "The Shepherdess"
 medium = "Acrylic on canvas"
 year = "2023"
