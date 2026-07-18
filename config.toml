@@ -89,11 +89,10 @@ allowed_domains = [
     { directive = "frame-src", domains = ["player.vimeo.com", "https://www.youtube-nocookie.com"] },
 ]
 
-# Custom subset of characters for the header.
-# If set to true, the `static/custom_subset.css` file will be loaded first.
-# This avoids a flashing text issue in Firefox.
-# Please see https://welpo.github.io/tabi/blog/custom-font-subset/ to learn how to create this file.
-custom_subset = true
+# Do not load a separate, render-blocking font-subset stylesheet. The subset
+# asset is not generated in this repository and Lighthouse found it unused on
+# the homepage.
+custom_subset = false
 
 [extra.giscus]
 enabled_for_all_posts = false
