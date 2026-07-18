@@ -163,25 +163,44 @@
     }
 
     .toc-container h3 {
-        margin-top: 0;
+        margin: 0 0 0.6rem;
         font-size: 0.9rem;
     }
 
-    .toc-container ul {
-        padding-left: 1rem;
-    }
-
     .toc-container > ul {
-        margin-bottom: 0;
+        margin: 0;
+        padding: 0;
+        list-style: none;
     }
 
     .toc-container li {
-        margin: 0.35rem 0;
+        margin: 0;
     }
 
     .toc-container a {
         display: block;
         padding: 0.08rem 0.25rem;
         border-radius: 0.15rem;
+    }
+
+    /* Separate top-level sections while keeping their children visually grouped. */
+    .toc-container > ul > li + li {
+        margin-top: 0.7rem;
+    }
+
+    .toc-container li > ul {
+        margin: 0.2rem 0 0.3rem 0.45rem;
+        padding: 0 0 0 0.55rem;
+        border-left: 1px solid var(--divider-color);
+        list-style: none;
+    }
+
+    .toc-container li > ul > li + li {
+        margin-top: 0.2rem;
+    }
+
+    .toc-container li > ul li > ul {
+        margin-top: 0.15rem;
+        margin-bottom: 0.2rem;
     }
 }
