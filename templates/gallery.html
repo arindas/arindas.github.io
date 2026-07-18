@@ -96,8 +96,13 @@
         let pointers = new Map();
         let pinchDistance = 0;
         let pinchScale = 1;
+        let openRequest = 0;
+        const fullImageLoads = new Map();
 
         const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+        const decodeImage = (element) => element.decode
+            ? element.decode().catch(() => {})
+            : Promise.resolve();
         const render = () => {
             image.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
         };
@@ -124,19 +129,56 @@
             const [first, second] = [...pointers.values()];
             return Math.hypot(first.x - second.x, first.y - second.y);
         };
+        const preloadFullImage = (src) => {
+            if (fullImageLoads.has(src)) return fullImageLoads.get(src);
+
+            const preload = new Image();
+            const load = new Promise((resolve) => {
+                preload.addEventListener('load', () => {
+                    decodeImage(preload).finally(resolve);
+                }, { once: true });
+                preload.addEventListener('error', resolve, { once: true });
+                preload.src = src;
+            });
+            fullImageLoads.set(src, load);
+            return load;
+        };
+        const preloadArtworkImages = () => {
+            const sources = [...document.querySelectorAll('.art-card__link')]
+                .map((button) => button.dataset.artworkSrc);
+            let index = 0;
+            const preloadNext = () => {
+                if (index >= sources.length) return;
+                preloadFullImage(sources[index++]).finally(scheduleNext);
+            };
+            const scheduleNext = () => {
+                if ('requestIdleCallback' in window) {
+                    window.requestIdleCallback(preloadNext, { timeout: 2000 });
+                } else {
+                    window.setTimeout(preloadNext, 200);
+                }
+            };
+            scheduleNext();
+        };
 
         document.querySelectorAll('.art-card__link').forEach((button) => {
-            button.addEventListener('click', () => {
-                image.removeAttribute('src');
+            button.addEventListener('click', async () => {
+                const request = ++openRequest;
+                const src = button.dataset.artworkSrc;
                 image.alt = button.dataset.artworkAlt;
                 title.textContent = button.dataset.artworkTitle;
                 details.textContent = button.dataset.artworkDetails;
                 inspiration.textContent = button.dataset.artworkInspiration || '';
                 reset();
+                await preloadFullImage(src);
+                if (request !== openRequest) return;
+                image.src = src;
+                await decodeImage(image);
+                if (request !== openRequest) return;
                 dialog.showModal();
-                image.src = button.dataset.artworkSrc;
             });
         });
+        window.addEventListener('load', preloadArtworkImages, { once: true });
         dialog?.querySelector('[data-dialog-close]').addEventListener('click', () => dialog.close());
         dialog?.querySelector('[data-zoom-in]').addEventListener('click', () => zoom(scale + .4));
         dialog?.querySelector('[data-zoom-out]').addEventListener('click', () => zoom(scale - .4));
