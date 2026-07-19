@@ -6,6 +6,5 @@ weight = 20
 
 [extra]
 link_to = "https://github.com/solidstatedb/silicondb"
-featured = true
 stack = ["Rust", "Databases"]
 +++

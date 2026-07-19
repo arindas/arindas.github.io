@@ -9,6 +9,8 @@ and AI SaaS at scale.
 My expertise enables me to architect and implement cloud-native software services across multiple domains. I primarily have
 experience in medical imaging and diagnosis, and real-time document processing.
 
+> **Get in touch:** [Email](mailto:dasarindam.mails@gmail.com) · [GitHub](https://github.com/arindas) · [LinkedIn](https://www.linkedin.com/in/arind-das)
+
 ## Skill set
 
 ### Technical skills
